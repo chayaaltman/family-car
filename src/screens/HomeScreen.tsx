@@ -113,6 +113,7 @@ function CarCard({
           <View style={[s.dot, { backgroundColor: colors.danger }]} />
           <Text style={[s.statusText, { color: colors.danger }]} onPress={() => onOpenBooking(status.booking.id)}>
             {nameOf(status.booking.memberId)} {status.booking.memberId === meId ? 'have' : 'has'} it until {formatTime(effectiveEnd(status.booking))}
+            {status.booking.destination ? ` · going to ${status.booking.destination}` : ''}
           </Text>
         </View>
       ) : (

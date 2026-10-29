@@ -41,6 +41,7 @@ export interface Booking {
   start: number;
   end: number;
   purpose?: string;
+  destination?: string; // where the driver is going, e.g. "Grandma's house, Haifa"
   createdAt: number;
   returnedAt?: number; // set if the car came back before `end`
 }

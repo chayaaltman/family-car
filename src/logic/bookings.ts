@@ -50,6 +50,7 @@ export interface Draft {
   start: number;
   end: number;
   purpose?: string;
+  destination?: string;
 }
 
 /**
@@ -161,7 +162,15 @@ export function saveBooking(state: FamilyState, draft: Draft, now = Date.now()):
       ...state,
       bookings: state.bookings.map((b) =>
         b.id === draft.id
-          ? { ...b, carId: draft.carId, memberId: draft.memberId, start: draft.start, end: draft.end, purpose: draft.purpose }
+          ? {
+              ...b,
+              carId: draft.carId,
+              memberId: draft.memberId,
+              start: draft.start,
+              end: draft.end,
+              purpose: draft.purpose,
+              destination: draft.destination,
+            }
           : b,
       ),
     };
@@ -173,6 +182,7 @@ export function saveBooking(state: FamilyState, draft: Draft, now = Date.now()):
     start: draft.start,
     end: draft.end,
     purpose: draft.purpose,
+    destination: draft.destination,
     createdAt: now,
   };
   return { ...state, bookings: [...state.bookings, booking] };

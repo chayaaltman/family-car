@@ -119,7 +119,12 @@ export function DayTimeline({ day, cars, bookings, members, meId, onPressBooking
                         {b.start < dayStart ? ' (from earlier)' : ''}
                       </Text>
                     )}
-                    {height > 70 && b.purpose ? (
+                    {height > 70 && b.destination ? (
+                      <Text numberOfLines={1} style={[s.blockTime, { color: mine ? onColor(color) : colors.muted }]}>
+                        📍 {b.destination}
+                      </Text>
+                    ) : null}
+                    {height > 90 && b.purpose ? (
                       <Text numberOfLines={2} style={[s.blockTime, { color: mine ? onColor(color) : colors.muted }]}>
                         {b.purpose}
                       </Text>

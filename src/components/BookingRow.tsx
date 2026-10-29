@@ -33,9 +33,9 @@ export function BookingRow({
           {booking.memberId === meId ? 'You' : member?.name ?? 'Someone'} · {car?.name ?? 'Deleted car'}
         </Text>
         <Text style={s.time}>{formatRange(booking.start, end, now)}</Text>
-        {booking.purpose ? (
+        {booking.destination || booking.purpose ? (
           <Text style={s.purpose} numberOfLines={1}>
-            {booking.purpose}
+            {[booking.destination && `📍 ${booking.destination}`, booking.purpose].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
       </View>

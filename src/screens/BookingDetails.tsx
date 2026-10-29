@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { Avatar, Banner, Button, Chip, Field, Label } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
 import { cancelBooking, effectiveEnd, returnCar } from '../logic/bookings';
@@ -92,6 +92,20 @@ export function BookingDetails({
           <Text style={s.muted}>{formatDuration(end - booking.start)}{booking.returnedAt ? ' · returned early' : ''}</Text>
         </View>
       </View>
+
+      {booking.destination && (
+        <View style={s.row}>
+          <Ionicons name="location-outline" size={20} color={colors.muted} />
+          <Text style={[s.body, { fontWeight: '600' }]}>{booking.destination}</Text>
+          <Button
+            small
+            variant="secondary"
+            icon="navigate-outline"
+            title="Waze"
+            onPress={() => Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(booking.destination!)}&navigate=yes`)}
+          />
+        </View>
+      )}
 
       {booking.purpose && (
         <View style={s.row}>

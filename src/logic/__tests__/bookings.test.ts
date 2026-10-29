@@ -144,6 +144,14 @@ describe('state transitions', () => {
     ).not.toThrow();
   });
 
+  it('saves and edits the destination', () => {
+    let s = saveBooking(family(), { carId: 'car2', memberId: 'eli', start: at(13), end: at(14), destination: 'Haifa' }, NOW);
+    const added = s.bookings.find((b) => b.memberId === 'eli')!;
+    expect(added.destination).toBe('Haifa');
+    s = saveBooking(s, { id: added.id, carId: 'car2', memberId: 'eli', start: at(13), end: at(14), destination: 'Eilat' }, NOW);
+    expect(s.bookings.find((b) => b.id === added.id)!.destination).toBe('Eilat');
+  });
+
   it('cancelling removes the booking', () => {
     expect(cancelBooking(family(), 'b1').bookings).toHaveLength(0);
   });

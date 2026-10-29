@@ -36,10 +36,19 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
   const [start, setStart] = useState(existing?.start ?? init.start ?? roundUpToMinutes(Date.now(), 15));
   const [end, setEnd] = useState(existing?.end ?? start + HOUR);
   const [purpose, setPurpose] = useState(existing?.purpose ?? '');
+  const [destination, setDestination] = useState(existing?.destination ?? '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const draft = { id: existing?.id, carId: carId ?? '', memberId, start, end, purpose: purpose.trim() || undefined };
+  const draft = {
+    id: existing?.id,
+    carId: carId ?? '',
+    memberId,
+    start,
+    end,
+    purpose: purpose.trim() || undefined,
+    destination: destination.trim() || undefined,
+  };
 
   // Re-check the rules on every change so the user sees clashes before pressing Save.
   const check = useMemo(() => {
@@ -137,6 +146,15 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
           <Chip label="Rest of day" selected={end === endOfDay(start)} onPress={() => setEnd(endOfDay(start))} />
         </View>
         <Text style={s.duration}>Duration: {end > start ? formatDuration(end - start) : '—'}</Text>
+
+        <Field
+          label="Where to? (optional)"
+          placeholder="Address, city or place – e.g. Grandma's, Haifa"
+          value={destination}
+          onChangeText={setDestination}
+          maxLength={120}
+          textContentType="fullStreetAddress"
+        />
 
         <Field label="What for? (optional)" placeholder="Work, groceries, driving lesson…" value={purpose} onChangeText={setPurpose} maxLength={80} />
 
