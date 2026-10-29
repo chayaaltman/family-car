@@ -4,7 +4,8 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BookingRow } from '../components/BookingRow';
 import { Avatar, Banner, Button, Card, Chip, EmptyState, SectionTitle } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { carStatus, effectiveEnd, insuranceWarning } from '../logic/bookings';
+import { carStatus, effectiveEnd, insuranceWarning, needsApproval, requestsFor, statusOf } from '../logic/bookings';
+import { RequestCard } from '../components/RequestCard';
 import { HOUR, MINUTE, formatDayLabel, formatDuration, formatTime } from '../logic/time';
 import { useSheets } from '../navigation';
 import { colors, space } from '../theme';
@@ -33,9 +34,11 @@ export function HomeScreen() {
   const sheets = useSheets();
   const now = useNow();
 
+  // Your upcoming bookings and requests (declined ones live in the Bookings tab).
   const myUpcoming = state.bookings
-    .filter((b) => b.memberId === me.id && effectiveEnd(b) > now)
+    .filter((b) => b.memberId === me.id && effectiveEnd(b) > now && statusOf(b) !== 'declined')
     .sort((a, b) => a.start - b.start);
+  const requests = requestsFor(state, me.id, now);
 
   return (
     <ScrollView contentContainerStyle={s.content}>
@@ -43,6 +46,17 @@ export function HomeScreen() {
       <Text style={s.sub}>{state.familyName}</Text>
 
       <Button title="Book a car" icon="add-circle-outline" onPress={() => sheets.newBooking()} style={{ marginTop: space(4) }} />
+
+      {requests.length > 0 && (
+        <>
+          <SectionTitle>Waiting for your OK ({requests.length})</SectionTitle>
+          <View style={{ gap: space(3) }}>
+            {requests.map((b) => (
+              <RequestCard key={b.id} booking={b} onOpen={() => sheets.showBooking(b.id)} />
+            ))}
+          </View>
+        </>
+      )}
 
       <SectionTitle>Cars right now</SectionTitle>
       {state.cars.length === 0 && (
@@ -56,7 +70,7 @@ export function HomeScreen() {
         ))}
       </View>
 
-      <SectionTitle>Your next bookings</SectionTitle>
+      <SectionTitle>Your next bookings & requests</SectionTitle>
       {myUpcoming.length === 0 ? (
         <Card>
           <EmptyState icon="calendar-clear-outline" title="Nothing booked" text="When you book a car it shows up here." />
@@ -94,6 +108,7 @@ function CarCard({
   const warning = insuranceWarning(car, now);
   const insured = state.members.filter((m) => car.insuredMemberIds.includes(m.id));
   const report = car.lastReport;
+  const owner = state.members.find((m) => m.id === car.ownerId);
 
   return (
     <Card style={{ gap: space(3), borderTopWidth: 4, borderTopColor: car.color }}>
@@ -139,6 +154,16 @@ function CarCard({
         </View>
       )}
 
+      {owner && (
+        <View style={s.report}>
+          <Ionicons name="key-outline" size={16} color={colors.muted} />
+          <Text style={s.reportText}>
+            Owner: <Text style={{ fontWeight: '700', color: colors.text }}>{owner.id === meId ? 'You' : owner.name}</Text>
+            {owner.id === meId ? ' — you approve bookings' : ` — bookings need ${owner.name}'s OK`}
+          </Text>
+        </View>
+      )}
+
       <View style={{ gap: space(2) }}>
         <Text style={s.label}>
           <Ionicons name="shield-checkmark-outline" size={13} /> Insured drivers{car.insuranceCompany ? ` · ${car.insuranceCompany}` : ''}
@@ -156,7 +181,13 @@ function CarCard({
       </View>
 
       {car.insuredMemberIds.includes(meId) ? (
-        <Button small variant="secondary" icon="calendar-outline" title={`Book ${car.name}`} onPress={onBook} />
+        <Button
+          small
+          variant="secondary"
+          icon={needsApproval(car, meId) ? 'paper-plane-outline' : 'calendar-outline'}
+          title={needsApproval(car, meId) ? `Ask ${owner?.name ?? 'the owner'} for ${car.name}` : `Book ${car.name}`}
+          onPress={onBook}
+        />
       ) : (
         <Chip label="You're not insured on this car" color={colors.muted} icon="lock-closed-outline" />
       )}

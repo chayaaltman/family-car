@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Banner, Button, type IconName } from './src/components/ui';
-import { FamilyProvider, useFamily } from './src/data/FamilyContext';
+import { FamilyProvider, useFamily, useLoadedFamily } from './src/data/FamilyContext';
+import { requestsFor } from './src/logic/bookings';
 import { SheetProvider, useSheets } from './src/navigation';
 import { BookingsScreen } from './src/screens/BookingsScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
@@ -64,6 +65,8 @@ const TABS: { key: Tab; label: string; icon: IconName; iconActive: IconName }[] 
 function MainTabs() {
   const [tab, setTab] = useState<Tab>('home');
   const sheets = useSheets();
+  const { state, me } = useLoadedFamily();
+  const waiting = requestsFor(state, me.id).length;
 
   return (
     <View style={{ flex: 1 }}>
@@ -83,7 +86,13 @@ function MainTabs() {
             <Ionicons name="add" size={32} color="#fff" />
           </Pressable>
           {TABS.slice(2).map((t) => (
-            <TabButton key={t.key} tab={t} active={tab === t.key} onPress={() => setTab(t.key)} />
+            <TabButton
+              key={t.key}
+              tab={t}
+              active={tab === t.key}
+              badge={t.key === 'bookings' ? waiting : 0}
+              onPress={() => setTab(t.key)}
+            />
           ))}
         </View>
       </SafeAreaView>
@@ -91,10 +100,33 @@ function MainTabs() {
   );
 }
 
-function TabButton({ tab, active, onPress }: { tab: (typeof TABS)[number]; active: boolean; onPress: () => void }) {
+function TabButton({
+  tab,
+  active,
+  badge = 0,
+  onPress,
+}: {
+  tab: (typeof TABS)[number];
+  active: boolean;
+  badge?: number;
+  onPress: () => void;
+}) {
   return (
-    <Pressable accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={onPress} style={styles.tab}>
-      <Ionicons name={active ? tab.iconActive : tab.icon} size={24} color={active ? colors.primary : colors.faint} />
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={badge ? `${tab.label}, ${badge} waiting for your approval` : tab.label}
+      onPress={onPress}
+      style={styles.tab}
+    >
+      <View>
+        <Ionicons name={active ? tab.iconActive : tab.icon} size={24} color={active ? colors.primary : colors.faint} />
+        {badge > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge}</Text>
+          </View>
+        )}
+      </View>
       <Text style={[styles.tabLabel, { color: active ? colors.primary : colors.faint }]}>{tab.label}</Text>
     </Pressable>
   );
@@ -108,6 +140,19 @@ const styles = StyleSheet.create({
   tabBar: { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
   tabRow: { flexDirection: 'row', alignItems: 'center', maxWidth: 720, width: '100%', alignSelf: 'center' },
   tab: { flex: 1, alignItems: 'center', paddingVertical: space(2), gap: 2 },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   tabLabel: { fontSize: 11, fontWeight: '600' },
   fab: {
     width: 56,

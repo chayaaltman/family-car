@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { Alert, Linking, Platform, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { Avatar, Banner, Button, Chip, Field, Label } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { cancelBooking, effectiveEnd, returnCar } from '../logic/bookings';
+import { cancelBooking, effectiveEnd, isConfirmed, returnCar, statusOf } from '../logic/bookings';
+import { RequestActions } from '../components/RequestCard';
 import { formatDuration, formatRange } from '../logic/time';
 import { colors, space } from '../theme';
 import type { FuelLevel } from '../types';
@@ -57,8 +58,12 @@ export function BookingDetails({
   const now = Date.now();
   const end = effectiveEnd(booking);
   const mine = booking.memberId === me.id;
-  const active = booking.start <= now && now < end;
+  const status = statusOf(booking);
+  const active = isConfirmed(booking) && booking.start <= now && now < end;
   const past = end <= now;
+  const owner = state.members.find((m) => m.id === car?.ownerId);
+  const decider = state.members.find((m) => m.id === booking.decidedBy);
+  const iAmOwner = !!car && car.ownerId === me.id;
 
   const run = async (fn: Parameters<typeof act>[0]) => {
     try {
@@ -68,6 +73,11 @@ export function BookingDetails({
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+
+  const remindOwner = () =>
+    Share.share({
+      message: `Hi ${owner?.name}! I asked for ${car?.name} ${formatRange(booking.start, booking.end)}${booking.destination ? ` to go to ${booking.destination}` : ''}. Can you approve it in Family Car? 🙏 – ${me.name}`,
+    }).catch(() => undefined);
 
   const askForCar = () =>
     Share.share({
@@ -84,6 +94,23 @@ export function BookingDetails({
         </View>
         {active && <Chip label="Now" color={colors.success} selected />}
       </View>
+
+      {status === 'pending' && (
+        <Banner tone="warning" icon="time-outline">
+          {iAmOwner
+            ? `${member?.name} is asking for your ${car?.name}. It goes on the calendar only if you approve.`
+            : `Waiting for ${owner?.name ?? 'the owner'} to approve. It's not on the calendar yet.`}
+        </Banner>
+      )}
+      {status === 'declined' && (
+        <Banner tone="danger">
+          {`Declined by ${decider?.name ?? 'the owner'}`}
+          {booking.declineReason ? `: “${booking.declineReason}”` : '.'}
+        </Banner>
+      )}
+      {status === 'approved' && booking.decidedBy && (
+        <Banner tone="success">{`Approved by ${decider?.name ?? 'the owner'}`}</Banner>
+      )}
 
       <View style={s.row}>
         {member && <Avatar member={member} size={40} />}
@@ -144,21 +171,32 @@ export function BookingDetails({
         </View>
       ) : (
         <View style={{ gap: space(3), marginTop: space(2) }}>
+          {iAmOwner && status === 'pending' && !past && <RequestActions booking={booking} onDone={onClose} />}
+          {mine && status === 'pending' && !iAmOwner && !past && (
+            <Button title={`Remind ${owner?.name ?? 'the owner'}`} icon="notifications-outline" variant="secondary" onPress={remindOwner} />
+          )}
           {mine && active && <Button title="I'm back – return the car" icon="key-outline" onPress={() => setReturning(true)} />}
-          {mine && !past && <Button title="Edit time or car" icon="create-outline" variant="secondary" onPress={onEdit} />}
           {mine && !past && (
             <Button
-              title="Cancel booking"
+              title={status === 'declined' ? 'Change it & ask again' : 'Edit time or car'}
+              icon="create-outline"
+              variant="secondary"
+              onPress={onEdit}
+            />
+          )}
+          {mine && !past && (
+            <Button
+              title={status === 'approved' ? 'Cancel booking' : status === 'pending' ? 'Cancel request' : 'Remove'}
               icon="trash-outline"
               variant="danger"
               onPress={async () => {
-                if (await confirm('Cancel booking?', `${car?.name} will be free for others.`)) {
+                if (status === 'declined' || (await confirm('Cancel?', status === 'pending' ? 'Your request will be withdrawn.' : `${car?.name} will be free for others.`))) {
                   run((st) => cancelBooking(st, booking.id));
                 }
               }}
             />
           )}
-          {!mine && !past && (
+          {!mine && !past && status === 'approved' && (
             <Button title={`Message ${member?.name ?? 'them'} about it`} icon="chatbubbles-outline" variant="secondary" onPress={askForCar} />
           )}
           <Button title="Close" variant="ghost" onPress={onClose} />

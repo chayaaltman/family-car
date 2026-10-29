@@ -1,4 +1,4 @@
-import type { Booking, Car, CarReport, FamilyState, Id, Member } from '../types';
+import type { Booking, BookingStatus, Car, CarReport, FamilyState, Id, Member } from '../types';
 import { DAY, MINUTE, endOfDay, formatDate, formatRange, startOfDay } from './time';
 
 /** Thrown when an action breaks a family rule. The message is shown to the user as-is. */
@@ -28,18 +28,41 @@ export function isInsured(car: Car, memberId: Id, at: number): boolean {
   return car.insuranceExpires === undefined || car.insuranceExpires >= at;
 }
 
+export function statusOf(b: Booking): BookingStatus {
+  return b.status ?? 'approved';
+}
+
+/** Only approved bookings are on the calendar and hold the car. */
+export function isConfirmed(b: Booking): boolean {
+  return statusOf(b) === 'approved';
+}
+
+/** Does this person need the owner's OK to take this car? */
+export function needsApproval(car: Car, memberId: Id): boolean {
+  return car.ownerId !== undefined && car.ownerId !== memberId;
+}
+
+/** Approved bookings for a car, sorted by start time. */
 export function bookingsForCar(state: FamilyState, carId: Id): Booking[] {
   return state.bookings
-    .filter((b) => b.carId === carId)
+    .filter((b) => b.carId === carId && isConfirmed(b))
     .sort((a, b) => a.start - b.start);
 }
 
-/** Bookings that touch the given day, sorted by start time. */
+/** Requests waiting for this member to approve (as owner of the car). */
+export function requestsFor(state: FamilyState, ownerId: Id, now = Date.now()): Booking[] {
+  const owned = new Set(state.cars.filter((c) => c.ownerId === ownerId).map((c) => c.id));
+  return state.bookings
+    .filter((b) => statusOf(b) === 'pending' && owned.has(b.carId) && b.end > now)
+    .sort((a, b) => a.start - b.start);
+}
+
+/** Approved bookings that touch the given day, sorted by start time. */
 export function bookingsOnDay(bookings: Booking[], day: number): Booking[] {
   const from = startOfDay(day);
   const to = endOfDay(day);
   return bookings
-    .filter((b) => overlaps(b.start, effectiveEnd(b), from, to))
+    .filter((b) => isConfirmed(b) && overlaps(b.start, effectiveEnd(b), from, to))
     .sort((a, b) => a.start - b.start);
 }
 
@@ -83,8 +106,9 @@ export function validateBooking(state: FamilyState, draft: Draft, now = Date.now
 
   const others = state.bookings.filter((b) => b.id !== draft.id);
 
+  // Only approved bookings hold the car; pending requests don't block anyone.
   const clash = others.find(
-    (b) => b.carId === car.id && overlaps(draft.start, draft.end, b.start, effectiveEnd(b)),
+    (b) => isConfirmed(b) && b.carId === car.id && overlaps(draft.start, draft.end, b.start, effectiveEnd(b)),
   );
   if (clash) {
     const who = state.members.find((m) => m.id === clash.memberId)?.name ?? 'Someone';
@@ -95,8 +119,9 @@ export function validateBooking(state: FamilyState, draft: Draft, now = Date.now
     );
   }
 
+  // Your own requests count too: no asking for two cars at once.
   const doubleBooked = others.find(
-    (b) => b.memberId === member.id && overlaps(draft.start, draft.end, b.start, effectiveEnd(b)),
+    (b) => statusOf(b) !== 'declined' && b.memberId === member.id && overlaps(draft.start, draft.end, b.start, effectiveEnd(b)),
   );
   if (doubleBooked) {
     const other = state.cars.find((c) => c.id === doubleBooked.carId)?.name ?? 'another car';
@@ -155,28 +180,44 @@ export function insuranceWarning(car: Car, now = Date.now()): string | null {
 
 export const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
+/**
+ * Creates or edits a booking. If the car has an owner and someone else is
+ * driving, it becomes a request the owner must approve. Editing an approved
+ * booking's car or times sends it back for approval; editing just the notes doesn't.
+ */
 export function saveBooking(state: FamilyState, draft: Draft, now = Date.now()): FamilyState {
   validateBooking(state, draft, now);
+  const car = state.cars.find((c) => c.id === draft.carId)!;
+  const askOwner = needsApproval(car, draft.memberId);
+
   if (draft.id) {
     return {
       ...state,
-      bookings: state.bookings.map((b) =>
-        b.id === draft.id
-          ? {
-              ...b,
-              carId: draft.carId,
-              memberId: draft.memberId,
-              start: draft.start,
-              end: draft.end,
-              purpose: draft.purpose,
-              destination: draft.destination,
-            }
-          : b,
-      ),
+      bookings: state.bookings.map((b) => {
+        if (b.id !== draft.id) return b;
+        const changed =
+          b.carId !== draft.carId || b.memberId !== draft.memberId || b.start !== draft.start || b.end !== draft.end;
+        const keepApproval = isConfirmed(b) && !changed;
+        return {
+          ...b,
+          carId: draft.carId,
+          memberId: draft.memberId,
+          start: draft.start,
+          end: draft.end,
+          purpose: draft.purpose,
+          destination: draft.destination,
+          ...(askOwner && !keepApproval
+            ? { status: 'pending' as const, decidedBy: undefined, decidedAt: undefined, declineReason: undefined }
+            : askOwner
+              ? {}
+              : { status: 'approved' as const, declineReason: undefined }),
+        };
+      }),
     };
   }
   const booking: Booking = {
     id: newId(),
+    status: askOwner ? 'pending' : 'approved',
     carId: draft.carId,
     memberId: draft.memberId,
     start: draft.start,
@@ -186,6 +227,67 @@ export function saveBooking(state: FamilyState, draft: Draft, now = Date.now()):
     createdAt: now,
   };
   return { ...state, bookings: [...state.bookings, booking] };
+}
+
+/** The car owner says yes. Overlapping requests for the same car are declined automatically. */
+export function approveBooking(state: FamilyState, bookingId: Id, approverId: Id, now = Date.now()): FamilyState {
+  const booking = state.bookings.find((b) => b.id === bookingId);
+  if (!booking) throw new RuleError('That request no longer exists.');
+  if (statusOf(booking) !== 'pending') throw new RuleError('This request was already answered.');
+  const car = state.cars.find((c) => c.id === booking.carId);
+  if (!car) throw new RuleError('That car no longer exists.');
+  if (car.ownerId !== approverId) throw new RuleError(`Only ${car.name}'s owner can approve this.`);
+  if (booking.end <= now) throw new RuleError('This request has already expired.');
+
+  // Re-check against the latest calendar: someone may have been approved in the meantime.
+  validateBooking(state, booking, now);
+
+  const requester = state.members.find((m) => m.id === booking.memberId)?.name ?? 'someone';
+  return {
+    ...state,
+    bookings: state.bookings.map((b) => {
+      if (b.id === booking.id) {
+        return { ...b, status: 'approved' as const, decidedBy: approverId, decidedAt: now };
+      }
+      if (
+        statusOf(b) === 'pending' &&
+        b.carId === booking.carId &&
+        overlaps(b.start, b.end, booking.start, booking.end)
+      ) {
+        return {
+          ...b,
+          status: 'declined' as const,
+          decidedBy: approverId,
+          decidedAt: now,
+          declineReason: `${car.name} was given to ${requester} for that time.`,
+        };
+      }
+      return b;
+    }),
+  };
+}
+
+/** The car owner says no, optionally with a reason the requester will see. */
+export function declineBooking(
+  state: FamilyState,
+  bookingId: Id,
+  approverId: Id,
+  reason?: string,
+  now = Date.now(),
+): FamilyState {
+  const booking = state.bookings.find((b) => b.id === bookingId);
+  if (!booking) throw new RuleError('That request no longer exists.');
+  if (statusOf(booking) !== 'pending') throw new RuleError('This request was already answered.');
+  const car = state.cars.find((c) => c.id === booking.carId);
+  if (!car || car.ownerId !== approverId) throw new RuleError("Only the car's owner can decline this.");
+  return {
+    ...state,
+    bookings: state.bookings.map((b) =>
+      b.id === bookingId
+        ? { ...b, status: 'declined' as const, decidedBy: approverId, decidedAt: now, declineReason: reason?.trim() || undefined }
+        : b,
+    ),
+  };
 }
 
 export function cancelBooking(state: FamilyState, bookingId: Id): FamilyState {
@@ -210,13 +312,38 @@ export function returnCar(
   };
 }
 
-export function upsertCar(state: FamilyState, car: Car): FamilyState {
+export function upsertCar(state: FamilyState, car: Car, now = Date.now()): FamilyState {
   if (!car.name.trim()) throw new RuleError('Give the car a name.');
   const exists = state.cars.some((c) => c.id === car.id);
-  return {
-    ...state,
-    cars: exists ? state.cars.map((c) => (c.id === car.id ? car : c)) : [...state.cars, car],
-  };
+  return settleRequests(
+    { ...state, cars: exists ? state.cars.map((c) => (c.id === car.id ? car : c)) : [...state.cars, car] },
+    now,
+  );
+}
+
+/**
+ * After a car's owner changes (or is removed), requests that no longer need
+ * approval are approved if they still fit the calendar, and declined if not.
+ * Without this they'd wait forever for an owner who isn't there.
+ */
+function settleRequests(state: FamilyState, now: number): FamilyState {
+  let next = state;
+  for (const b of state.bookings) {
+    const car = state.cars.find((c) => c.id === b.carId);
+    if (statusOf(b) !== 'pending' || !car || needsApproval(car, b.memberId)) continue;
+    try {
+      validateBooking(next, b, now);
+      next = { ...next, bookings: next.bookings.map((x) => (x.id === b.id ? { ...x, status: 'approved' as const } : x)) };
+    } catch {
+      next = {
+        ...next,
+        bookings: next.bookings.map((x) =>
+          x.id === b.id ? { ...x, status: 'declined' as const, declineReason: 'The car is no longer free at that time.' } : x,
+        ),
+      };
+    }
+  }
+  return next;
 }
 
 export function deleteCar(state: FamilyState, carId: Id): FamilyState {
@@ -236,15 +363,16 @@ export function upsertMember(state: FamilyState, member: Member): FamilyState {
   };
 }
 
-export function deleteMember(state: FamilyState, memberId: Id): FamilyState {
+export function deleteMember(state: FamilyState, memberId: Id, now = Date.now()): FamilyState {
   if (state.members.length <= 1) throw new RuleError('A family needs at least one member.');
-  return {
+  return settleRequests({
     ...state,
     members: state.members.filter((m) => m.id !== memberId),
     cars: state.cars.map((c) => ({
       ...c,
       insuredMemberIds: c.insuredMemberIds.filter((id) => id !== memberId),
+      ownerId: c.ownerId === memberId ? undefined : c.ownerId,
     })),
     bookings: state.bookings.filter((b) => b.memberId !== memberId),
-  };
+  }, now);
 }

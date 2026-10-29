@@ -79,6 +79,41 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
           ))}
         </View>
 
+        <Text style={s.section}>Owner</Text>
+        <Label>Who approves bookings for this car?</Label>
+        <View style={s.row}>
+          <Pressable
+            onPress={() => set({ ownerId: undefined })}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: !car.ownerId }}
+            style={[s.ownerChip, !car.ownerId && s.ownerChipOn]}
+          >
+            <Ionicons name="lock-open-outline" size={18} color={!car.ownerId ? colors.primary : colors.muted} />
+            <Text style={[s.ownerText, !car.ownerId && { color: colors.primary }]}>No one – anyone can book</Text>
+          </Pressable>
+          {state.members.map((m) => {
+            const on = car.ownerId === m.id;
+            return (
+              <Pressable
+                key={m.id}
+                onPress={() => set({ ownerId: m.id })}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={[s.ownerChip, on && s.ownerChipOn]}
+              >
+                <Avatar member={m} size={22} />
+                <Text style={[s.ownerText, on && { color: colors.primary }]}>{m.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {car.ownerId && (
+          <Text style={s.hint}>
+            When someone else books {car.name || 'this car'}, it waits for{' '}
+            {state.members.find((m) => m.id === car.ownerId)?.name}'s approval before it goes on the calendar.
+          </Text>
+        )}
+
         <Text style={s.section}>Insurance</Text>
         <Label>Who is insured to drive it?</Label>
         <View style={{ gap: space(2) }}>
@@ -167,6 +202,20 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.card,
   },
+  ownerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space(2),
+    paddingVertical: space(2),
+    paddingHorizontal: space(3),
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  ownerChipOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  ownerText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  hint: { fontSize: 13, color: colors.muted, marginTop: -space(2) },
   memberName: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.text },
   dateField: {
     flexDirection: 'row',

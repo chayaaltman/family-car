@@ -1,6 +1,11 @@
 import type { FamilyState } from '../../types';
 import {
   RuleError,
+  approveBooking,
+  declineBooking,
+  isConfirmed,
+  requestsFor,
+  upsertCar,
   cancelBooking,
   carStatus,
   deleteMember,
@@ -168,5 +173,86 @@ describe('state transitions', () => {
     saveBooking(before, { carId: 'car2', memberId: 'eli', start: at(13), end: at(14) }, NOW);
     returnCar(before, 'b1', {}, at(11));
     expect(JSON.stringify(before)).toBe(snapshot);
+  });
+});
+
+describe('owner approval', () => {
+  // Mom owns the Corolla: Noa's bookings on it need Mom's OK.
+  const owned = (): FamilyState => {
+    const s = family();
+    s.cars[0] = { ...s.cars[0], ownerId: 'mom' };
+    return s;
+  };
+  const request = (s: FamilyState, start: number, end: number, memberId = 'noa') =>
+    saveBooking(s, { carId: 'car1', memberId, start, end }, NOW);
+  const last = (s: FamilyState) => s.bookings[s.bookings.length - 1];
+
+  it("a booking on someone else's car becomes a pending request", () => {
+    const s = request(owned(), at(13), at(14));
+    expect(last(s).status).toBe('pending');
+    expect(requestsFor(s, 'mom', NOW).map((b) => b.id)).toEqual([last(s).id]);
+  });
+
+  it("the owner's own bookings are approved immediately", () => {
+    const s = request(owned(), at(13), at(14), 'mom');
+    expect(last(s).status).toBe('approved');
+  });
+
+  it('pending requests are not on the calendar and do not hold the car', () => {
+    let s = request(owned(), at(13), at(14));
+    expect(carStatus(s, 'car1', at(13, 30)).kind).toBe('free');
+    // Mom can still take that time herself.
+    expect(() => validateBooking(s, { carId: 'car1', memberId: 'mom', start: at(13), end: at(14) }, NOW)).not.toThrow();
+    s = approveBooking(s, last(s).id, 'mom', NOW);
+    expect(carStatus(s, 'car1', at(13, 30)).kind).toBe('in-use');
+  });
+
+  it('only the owner can approve or decline', () => {
+    const s = request(owned(), at(13), at(14));
+    expectRule(() => approveBooking(s, last(s).id, 'noa', NOW), /owner/);
+    expectRule(() => declineBooking(s, last(s).id, 'eli', 'no', NOW), /owner/);
+  });
+
+  it('approving declines other requests for the same time', () => {
+    let s = owned();
+    s.cars[0].insuredMemberIds.push('eli');
+    s = request(s, at(13), at(15), 'noa');
+    const noas = last(s).id;
+    s = request(s, at(14), at(16), 'eli');
+    const elis = last(s).id;
+    s = approveBooking(s, noas, 'mom', NOW);
+    const eli = s.bookings.find((b) => b.id === elis)!;
+    expect(eli.status).toBe('declined');
+    expect(eli.declineReason).toMatch(/given to Noa/);
+  });
+
+  it('cannot approve a request that now clashes with the calendar', () => {
+    let s = request(owned(), at(13), at(14));
+    const id = last(s).id;
+    s = saveBooking(s, { carId: 'car1', memberId: 'mom', start: at(13), end: at(15) }, NOW);
+    expectRule(() => approveBooking(s, id, 'mom', NOW), /already booked by Mom/);
+  });
+
+  it('declining keeps the reason for the requester', () => {
+    let s = request(owned(), at(13), at(14));
+    s = declineBooking(s, last(s).id, 'mom', 'I need it for work', NOW);
+    expect(last(s)).toMatchObject({ status: 'declined', declineReason: 'I need it for work', decidedBy: 'mom' });
+    expect(isConfirmed(last(s))).toBe(false);
+  });
+
+  it('changing the time of an approved booking asks the owner again', () => {
+    let s = request(owned(), at(13), at(14));
+    const id = last(s).id;
+    s = approveBooking(s, id, 'mom', NOW);
+    s = saveBooking(s, { id, carId: 'car1', memberId: 'noa', start: at(13), end: at(14), purpose: 'Groceries' }, NOW);
+    expect(last(s).status).toBe('approved'); // only the note changed
+    s = saveBooking(s, { id, carId: 'car1', memberId: 'noa', start: at(13), end: at(15) }, NOW);
+    expect(last(s).status).toBe('pending');
+  });
+
+  it('removing the owner settles requests that were waiting', () => {
+    let s = request(owned(), at(13), at(14));
+    s = upsertCar(s, { ...s.cars[0], ownerId: undefined }, NOW);
+    expect(last(s).status).toBe('approved');
   });
 });

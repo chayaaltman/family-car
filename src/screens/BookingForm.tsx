@@ -4,7 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { DateTimeField } from '../components/DateTimeField';
 import { Avatar, Banner, Button, Chip, Field, Label } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { RuleError, isInsured, saveBooking, validateBooking } from '../logic/bookings';
+import { RuleError, isConfirmed, isInsured, needsApproval, saveBooking, validateBooking } from '../logic/bookings';
 import { HOUR, MINUTE, endOfDay, formatDuration, formatRange, roundUpToMinutes } from '../logic/time';
 import { colors, radius, space, tint } from '../theme';
 
@@ -63,6 +63,12 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
   }, [state, carId, memberId, start, end, existing?.id]);
 
   const car = state.cars.find((c) => c.id === carId);
+  const owner = state.members.find((m) => m.id === car?.ownerId);
+  // Editing an approved booking keeps its approval unless the car, driver or times change.
+  const timesChanged =
+    !existing || existing.carId !== carId || existing.memberId !== memberId || existing.start !== start || existing.end !== end;
+  const asksOwner =
+    !!car && needsApproval(car, memberId) && (timesChanged || !isConfirmed(existing!));
 
   const changeStart = (t: number) => {
     // Moving the start keeps the same duration, like most calendar apps.
@@ -159,7 +165,14 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
         <Field label="What for? (optional)" placeholder="Work, groceries, driving lesson…" value={purpose} onChangeText={setPurpose} maxLength={80} />
 
         {check.ok ? (
-          <Banner tone="success">{car?.name} is free for you then.</Banner>
+          <View style={{ gap: space(2) }}>
+            {asksOwner && (
+              <Banner tone="info" icon="key-outline">
+                {car?.name} belongs to {owner?.name}. It goes on the calendar once {owner?.name} approves.
+              </Banner>
+            )}
+            <Banner tone="success">{car?.name} is free then.</Banner>
+          </View>
         ) : (
           <View style={{ gap: space(2) }}>
             <Banner tone="danger">{check.message}</Banner>
@@ -183,8 +196,8 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
       <View style={s.footer}>
         <Button title="Cancel" variant="ghost" onPress={onDone} style={{ flex: 1 }} />
         <Button
-          title={existing ? 'Save changes' : 'Book it'}
-          icon="checkmark"
+          title={asksOwner ? `Ask ${owner?.name}` : existing ? 'Save changes' : 'Book it'}
+          icon={asksOwner ? 'paper-plane-outline' : 'checkmark'}
           disabled={!check.ok}
           loading={saving}
           onPress={save}

@@ -17,6 +17,8 @@ Built with **React Native + Expo + TypeScript**, with optional real-time sync th
 | ⏱️ **Minute-precise booking** | Pick a date, an hour and exact minutes (−/+ 1 min), or use quick durations (30m, 1h, 2h, rest of day). |
 | 🛡️ **Insurance rules** | Each car lists its insured drivers, insurer and expiry date. You can't book a car you're not insured on, or past the date its insurance expires. You get a warning 30 days before it expires. |
 | ⚔️ **No double bookings** | Overlapping bookings are rejected, and the message says who already has the car. The app suggests the **next free slot** of the same length in one tap. |
+| ✅ **Owner approval** | A car can have an owner (e.g. Dad). When someone else books it, the booking becomes a *request* that stays off the calendar until the owner approves it. Owners see requests on the home screen and as a badge on the Bookings tab, and can decline with a reason. Approving one request auto-declines any other requests for the same car at overlapping times. |
+| 📍 **Destination** | Each booking can say where you're going. It shows in the calendar and on the car's live status, with a one-tap Waze button. |
 | 🙅 **One car per person** | Nobody can hold two cars at the same time. |
 | 🟢 **Live status** | "Free for 2h 6m · next: Dad at 17:00" or "Noa has it until 22:30", updated every minute. |
 | 🔑 **"I'm back" return flow** | End a booking early to free the car, and leave a note: where it's parked, how much fuel is left, any problems. The next driver sees it on the car card. |
@@ -103,7 +105,12 @@ double booking. One document works because a family's data is small (well under 
 **5. Times are epoch milliseconds**, shown in the device's local time zone. Date math uses `setDate`/`setHours`
 so days stay correct across daylight-saving changes. The timeline even draws 23- or 25-hour days.
 
-**6. "Next free slot"** walks the car's bookings sorted by start time and returns the first gap long enough
+**6. Approval is a small state machine.** A booking is `pending → approved | declined`. Only approved
+bookings hold the car, so a pending request can't block anyone. That's why `approveBooking` re-runs
+all the rules against the latest calendar before approving. If the owner is removed or changed,
+waiting requests are settled automatically so none are stuck forever.
+
+**7. "Next free slot"** walks the car's bookings sorted by start time and returns the first gap long enough
 for the requested duration: O(n log n) for the sort, O(n) for the scan.
 
 ### Known limitations and next steps

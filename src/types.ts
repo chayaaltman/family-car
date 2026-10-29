@@ -29,13 +29,26 @@ export interface Car {
   color: string;
   seats?: number;
   insuredMemberIds: Id[];
+  /** If set, other people's bookings need this person's approval. */
+  ownerId?: Id;
   insuranceCompany?: string;
   insuranceExpires?: number; // epoch ms
   lastReport?: CarReport;
 }
 
+/**
+ * pending  – waiting for the car owner; not on the calendar and doesn't block the car.
+ * approved – on the calendar (bookings without a status are approved; older data has none).
+ * declined – the owner said no; only the requester still sees it.
+ */
+export type BookingStatus = 'pending' | 'approved' | 'declined';
+
 export interface Booking {
   id: Id;
+  status?: BookingStatus;
+  decidedBy?: Id;
+  decidedAt?: number;
+  declineReason?: string;
   carId: Id;
   memberId: Id;
   start: number;

@@ -69,6 +69,11 @@ export function FamilyScreen() {
                   {c.insuredMemberIds.length} insured driver{c.insuredMemberIds.length === 1 ? '' : 's'}
                   {c.insuranceCompany ? ` · ${c.insuranceCompany}` : ''}
                 </Text>
+                <Text style={s.muted}>
+                  {c.ownerId
+                    ? `Owner: ${state.members.find((m) => m.id === c.ownerId)?.name ?? '—'} (approves bookings)`
+                    : 'No owner – anyone insured can book'}
+                </Text>
                 {warning && <Text style={[s.muted, { color: colors.warning, fontWeight: '600' }]}>{warning}</Text>}
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.faint} />

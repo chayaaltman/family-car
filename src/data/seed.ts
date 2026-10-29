@@ -28,6 +28,7 @@ export function demoFamily(now = Date.now()): FamilyState {
         color: CAR_COLORS[0],
         seats: 5,
         insuredMemberIds: ['mom', 'dad', 'noa', 'eli'],
+        ownerId: 'dad', // Dad approves other people's Corolla bookings
         insuranceCompany: 'Harel',
         insuranceExpires: now + 120 * DAY,
         lastReport: {
@@ -45,6 +46,7 @@ export function demoFamily(now = Date.now()): FamilyState {
         color: CAR_COLORS[1],
         seats: 4,
         insuredMemberIds: ['mom', 'noa', 'maya'],
+        ownerId: 'mom',
         insuranceCompany: 'Migdal',
         insuranceExpires: now + 21 * DAY, // shows the "expires soon" warning
         lastReport: {
@@ -64,6 +66,9 @@ export function demoFamily(now = Date.now()): FamilyState {
       { id: 'b5', carId: 'corolla', memberId: 'eli', start: at(1, 19, 0), end: at(1, 23, 0), purpose: 'Basketball', destination: 'Community center gym', createdAt: now },
       { id: 'b6', carId: 'corolla', memberId: 'mom', start: at(2, 10, 0), end: at(2, 12, 30), purpose: 'Visiting', destination: "Grandma's house, Haifa", createdAt: now },
       { id: 'b7', carId: 'picanto', memberId: 'noa', start: at(3, 9, 0), end: at(5, 18, 0), purpose: 'Trip up north', destination: 'Rosh Pina', createdAt: now },
+      // Requests waiting for the owner (sign in as Dad or Mom to approve them).
+      { id: 'r1', status: 'pending', carId: 'corolla', memberId: 'eli', start: at(1, 14, 0), end: at(1, 16, 30), purpose: 'Pick up friends', destination: 'Grand Mall', createdAt: now },
+      { id: 'r2', status: 'pending', carId: 'picanto', memberId: 'maya', start: at(2, 16, 0), end: at(2, 18, 0), purpose: 'Study group', destination: "Tamar's house", createdAt: now },
       { id: 'b8', carId: 'corolla', memberId: 'dad', start: at(4, 7, 30), end: at(4, 18, 0), purpose: 'Work', createdAt: now },
     ],
   };
