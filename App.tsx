@@ -7,7 +7,7 @@ import { Banner, Button, type IconName } from './src/components/ui';
 import { FamilyProvider, useFamily, useLoadedFamily } from './src/data/FamilyContext';
 import { requestsFor } from './src/logic/bookings';
 import { SheetProvider, useSheets } from './src/navigation';
-import { BookingsScreen } from './src/screens/BookingsScreen';
+import { BookingsScreen, type BookingsSection } from './src/screens/BookingsScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
 import { FamilyScreen } from './src/screens/FamilyScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -64,6 +64,7 @@ const TABS: { key: Tab; label: string; icon: IconName; iconActive: IconName }[] 
 
 function MainTabs() {
   const [tab, setTab] = useState<Tab>('home');
+  const [bookingsSection, setBookingsSection] = useState<BookingsSection>('upcoming');
   const sheets = useSheets();
   const { state, me } = useLoadedFamily();
   const waiting = requestsFor(state, me.id).length;
@@ -71,9 +72,16 @@ function MainTabs() {
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.page}>
-        {tab === 'home' && <HomeScreen />}
+        {tab === 'home' && (
+          <HomeScreen
+            onOpenRequests={() => {
+              setBookingsSection('requests');
+              setTab('bookings');
+            }}
+          />
+        )}
         {tab === 'calendar' && <CalendarScreen />}
-        {tab === 'bookings' && <BookingsScreen />}
+        {tab === 'bookings' && <BookingsScreen section={bookingsSection} onSection={setBookingsSection} />}
         {tab === 'family' && <FamilyScreen />}
       </View>
 

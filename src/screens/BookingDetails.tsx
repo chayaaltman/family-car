@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, Linking, Platform, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Avatar, Banner, Button, Chip, Field, Label } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
 import { cancelBooking, effectiveEnd, isConfirmed, returnCar, statusOf } from '../logic/bookings';
 import { RequestActions } from '../components/RequestCard';
+import { askAboutBookingMessage, requestMessage } from '../logic/messages';
+import { useSheets } from '../navigation';
 import { formatDuration, formatRange } from '../logic/time';
 import { colors, space } from '../theme';
 import type { FuelLevel } from '../types';
@@ -38,6 +40,7 @@ export function BookingDetails({
   onEdit: () => void;
 }) {
   const { state, me, act } = useLoadedFamily();
+  const sheets = useSheets();
   const [returning, setReturning] = useState(false);
   const [parkedAt, setParkedAt] = useState('');
   const [fuel, setFuel] = useState<FuelLevel | undefined>();
@@ -75,14 +78,14 @@ export function BookingDetails({
   };
 
   const remindOwner = () =>
-    Share.share({
-      message: `Hi ${owner?.name}! I asked for ${car?.name} ${formatRange(booking.start, booking.end)}${booking.destination ? ` to go to ${booking.destination}` : ''}. Can you approve it in Family Car? 🙏 – ${me.name}`,
-    }).catch(() => undefined);
+    owner && sheets.message({ to: owner.id, title: `Remind ${owner.name}`, text: requestMessage(state, booking) });
 
   const askForCar = () =>
-    Share.share({
-      message: `Hi ${member?.name}! I saw you have ${car?.name} ${formatRange(booking.start, end)}. Any chance we can work something out? 🚗 – ${me.name}`,
-    }).catch(() => undefined);
+    sheets.message({
+      to: booking.memberId,
+      title: `Message ${member?.name ?? ''}`,
+      text: askAboutBookingMessage(state, booking, me.name),
+    });
 
   return (
     <ScrollView contentContainerStyle={s.content}>
@@ -171,9 +174,9 @@ export function BookingDetails({
         </View>
       ) : (
         <View style={{ gap: space(3), marginTop: space(2) }}>
-          {iAmOwner && status === 'pending' && !past && <RequestActions booking={booking} onDone={onClose} />}
+          {iAmOwner && status === 'pending' && !past && <RequestActions booking={booking} />}
           {mine && status === 'pending' && !iAmOwner && !past && (
-            <Button title={`Remind ${owner?.name ?? 'the owner'}`} icon="notifications-outline" variant="secondary" onPress={remindOwner} />
+            <Button title={`Remind ${owner?.name ?? 'the owner'}`} icon="logo-whatsapp" variant="secondary" onPress={remindOwner} />
           )}
           {mine && active && <Button title="I'm back – return the car" icon="key-outline" onPress={() => setReturning(true)} />}
           {mine && !past && (
@@ -197,7 +200,7 @@ export function BookingDetails({
             />
           )}
           {!mine && !past && status === 'approved' && (
-            <Button title={`Message ${member?.name ?? 'them'} about it`} icon="chatbubbles-outline" variant="secondary" onPress={askForCar} />
+            <Button title={`Message ${member?.name ?? 'them'} about it`} icon="logo-whatsapp" variant="secondary" onPress={askForCar} />
           )}
           <Button title="Close" variant="ghost" onPress={onClose} />
         </View>

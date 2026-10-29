@@ -7,6 +7,8 @@ import { useLoadedFamily } from '../data/FamilyContext';
 import { RuleError, isConfirmed, isInsured, needsApproval, saveBooking, validateBooking } from '../logic/bookings';
 import { HOUR, MINUTE, endOfDay, formatDuration, formatRange, roundUpToMinutes } from '../logic/time';
 import { colors, radius, space, tint } from '../theme';
+import { requestMessage } from '../logic/messages';
+import { useSheets } from '../navigation';
 
 export interface BookingFormInit {
   bookingId?: string;
@@ -24,6 +26,7 @@ const QUICK_DURATIONS = [
 
 export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: () => void }) {
   const { state, me, act } = useLoadedFamily();
+  const sheets = useSheets();
   const existing = init.bookingId ? state.bookings.find((b) => b.id === init.bookingId) : undefined;
 
   const [memberId, setMemberId] = useState(existing?.memberId ?? me.id);
@@ -81,7 +84,16 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
     setSaveError(null);
     try {
       await act((s) => saveBooking(s, draft));
-      onDone();
+      if (asksOwner && owner) {
+        // Offer to tell the owner on WhatsApp / SMS right away.
+        sheets.message({
+          to: owner.id,
+          title: 'Request sent!',
+          text: requestMessage(state, { ...draft, id: draft.id ?? '', createdAt: Date.now() }),
+        });
+      } else {
+        onDone();
+      }
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -132,30 +144,42 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
                 accessibilityState={{ selected }}
                 style={[s.carOption, selected && { borderColor: c.color, backgroundColor: tint(c.color, 0.9) }]}
               >
-                <Ionicons name="car-sport" size={26} color={c.color} />
-                <Text style={s.carName}>{c.name}</Text>
-                <Text style={[s.carInsured, { color: insured ? colors.success : colors.danger }]}>
-                  {insured ? '✓ Insured' : '✕ Not insured'}
-                </Text>
+                <Ionicons name="car-sport" size={24} color={c.color} />
+                <View>
+                  <Text style={s.carName}>{c.name}</Text>
+                  <Text style={[s.carInsured, { color: insured ? colors.success : colors.danger }]}>
+                    {insured ? '✓ Insured' : '✕ Not insured'}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
         </View>
 
-        <DateTimeField label="From" value={start} onChange={changeStart} minDay={existing ? undefined : Date.now()} />
-        <DateTimeField label="Until" value={end} onChange={setEnd} minDay={start} />
+        <View style={s.times}>
+          <View style={{ flex: 1 }}>
+            <DateTimeField label="From" value={start} onChange={changeStart} minDay={existing ? undefined : Date.now()} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <DateTimeField
+              label={end > start ? `Until · ${formatDuration(end - start)}` : 'Until'}
+              value={end}
+              onChange={setEnd}
+              minDay={start}
+            />
+          </View>
+        </View>
 
-        <View style={s.rowWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.rowGap}>
           {QUICK_DURATIONS.map((d) => (
             <Chip key={d.label} label={d.label} selected={end - start === d.ms} onPress={() => setEnd(start + d.ms)} />
           ))}
           <Chip label="Rest of day" selected={end === endOfDay(start)} onPress={() => setEnd(endOfDay(start))} />
-        </View>
-        <Text style={s.duration}>Duration: {end > start ? formatDuration(end - start) : '—'}</Text>
+        </ScrollView>
 
         <Field
           label="Where to? (optional)"
-          placeholder="Address, city or place – e.g. Grandma's, Haifa"
+          placeholder="e.g. Grandma's, Haifa"
           value={destination}
           onChangeText={setDestination}
           maxLength={120}
@@ -209,10 +233,10 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
 }
 
 const s = StyleSheet.create({
-  content: { padding: space(5), gap: space(4), paddingBottom: space(10) },
-  title: { fontSize: 24, fontWeight: '800', color: colors.text },
+  content: { padding: space(5), gap: space(3.5), paddingBottom: space(8) },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text },
+  times: { flexDirection: 'row', gap: space(3) },
   rowGap: { gap: space(2) },
-  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
   person: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -230,9 +254,11 @@ const s = StyleSheet.create({
   carOption: {
     flexGrow: 1,
     flexBasis: '40%',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: space(1),
-    padding: space(3),
+    gap: space(2.5),
+    paddingVertical: space(2.5),
+    paddingHorizontal: space(3),
     borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.border,
@@ -240,7 +266,6 @@ const s = StyleSheet.create({
   },
   carName: { fontSize: 16, fontWeight: '700', color: colors.text },
   carInsured: { fontSize: 12, fontWeight: '600' },
-  duration: { color: colors.muted, fontSize: 13, marginTop: -space(2) },
   footer: {
     flexDirection: 'row',
     gap: space(3),

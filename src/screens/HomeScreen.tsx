@@ -1,18 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BookingRow } from '../components/BookingRow';
-import { Avatar, Banner, Button, Card, Chip, EmptyState, SectionTitle } from '../components/ui';
+import { Card, EmptyState, SectionTitle } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { carStatus, effectiveEnd, insuranceWarning, needsApproval, requestsFor, statusOf } from '../logic/bookings';
-import { RequestCard } from '../components/RequestCard';
-import { HOUR, MINUTE, formatDayLabel, formatDuration, formatTime } from '../logic/time';
+import { carStatus, effectiveEnd, insuranceWarning, requestsFor, statusOf } from '../logic/bookings';
+import { HOUR, MINUTE, formatDayLabel, formatTime } from '../logic/time';
 import { useSheets } from '../navigation';
-import { colors, space } from '../theme';
+import { colors, radius, shadow, space } from '../theme';
 import type { Car, FamilyState } from '../types';
-import { FUEL_LABELS } from './BookingDetails';
 
-/** Re-render every minute so "free for 2h 10m" stays accurate. */
+/** Re-render every 30s so "free until 17:00" stays accurate. */
 export function useNow(intervalMs = 30 * 1000): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -22,19 +20,19 @@ export function useNow(intervalMs = 30 * 1000): number {
   return now;
 }
 
-function timeAgo(t: number, now: number): string {
+export function timeAgo(t: number, now: number): string {
   const diff = now - t;
   if (diff < HOUR) return `${Math.max(1, Math.round(diff / MINUTE))} min ago`;
   if (diff < 24 * HOUR) return `${Math.round(diff / HOUR)}h ago`;
   return formatDayLabel(t, now);
 }
 
-export function HomeScreen() {
+/** Cars tab: one compact row per car (tap for the full car page) + your next bookings. */
+export function HomeScreen({ onOpenRequests }: { onOpenRequests: () => void }) {
   const { state, me } = useLoadedFamily();
   const sheets = useSheets();
   const now = useNow();
 
-  // Your upcoming bookings and requests (declined ones live in the Bookings tab).
   const myUpcoming = state.bookings
     .filter((b) => b.memberId === me.id && effectiveEnd(b) > now && statusOf(b) !== 'declined')
     .sort((a, b) => a.start - b.start);
@@ -43,41 +41,38 @@ export function HomeScreen() {
   return (
     <ScrollView contentContainerStyle={s.content}>
       <Text style={s.hello}>Hi {me.name} 👋</Text>
-      <Text style={s.sub}>{state.familyName}</Text>
-
-      <Button title="Book a car" icon="add-circle-outline" onPress={() => sheets.newBooking()} style={{ marginTop: space(4) }} />
 
       {requests.length > 0 && (
-        <>
-          <SectionTitle>Waiting for your OK ({requests.length})</SectionTitle>
-          <View style={{ gap: space(3) }}>
-            {requests.map((b) => (
-              <RequestCard key={b.id} booking={b} onOpen={() => sheets.showBooking(b.id)} />
-            ))}
+        <Pressable onPress={onOpenRequests} style={({ pressed }) => [s.requests, pressed && { opacity: 0.8 }]}>
+          <View style={s.requestsCount}>
+            <Text style={s.requestsCountText}>{requests.length}</Text>
           </View>
-        </>
+          <Text style={s.requestsText}>
+            {requests.length === 1 ? 'request is' : 'requests are'} waiting for your OK
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.warning} />
+        </Pressable>
       )}
 
-      <SectionTitle>Cars right now</SectionTitle>
-      {state.cars.length === 0 && (
+      <SectionTitle>Cars</SectionTitle>
+      {state.cars.length === 0 ? (
         <Card>
           <EmptyState icon="car-outline" title="No cars yet" text="Add your family's cars in the Family tab." />
         </Card>
+      ) : (
+        <View style={{ gap: space(2.5) }}>
+          {state.cars.map((car) => (
+            <CarRow key={car.id} car={car} state={state} meId={me.id} now={now} onPress={() => sheets.showCar(car.id)} />
+          ))}
+        </View>
       )}
-      <View style={{ gap: space(3) }}>
-        {state.cars.map((car) => (
-          <CarCard key={car.id} car={car} state={state} meId={me.id} now={now} onBook={() => sheets.newBooking({ carId: car.id })} onOpenBooking={sheets.showBooking} onEdit={() => sheets.editCar(car.id)} />
-        ))}
-      </View>
 
-      <SectionTitle>Your next bookings & requests</SectionTitle>
+      <SectionTitle>Your next</SectionTitle>
       {myUpcoming.length === 0 ? (
-        <Card>
-          <EmptyState icon="calendar-clear-outline" title="Nothing booked" text="When you book a car it shows up here." />
-        </Card>
+        <Text style={s.muted}>Nothing booked. Tap + to book a car.</Text>
       ) : (
         <View style={{ gap: space(2) }}>
-          {myUpcoming.slice(0, 3).map((b) => (
+          {myUpcoming.slice(0, 2).map((b) => (
             <BookingRow key={b.id} booking={b} state={state} meId={me.id} onPress={() => sheets.showBooking(b.id)} />
           ))}
         </View>
@@ -86,129 +81,84 @@ export function HomeScreen() {
   );
 }
 
-function CarCard({
-  car,
-  state,
-  meId,
-  now,
-  onBook,
-  onOpenBooking,
-  onEdit,
-}: {
-  car: Car;
-  state: FamilyState;
-  meId: string;
-  now: number;
-  onBook: () => void;
-  onOpenBooking: (id: string) => void;
-  onEdit: () => void;
-}) {
+function CarRow({ car, state, meId, now, onPress }: { car: Car; state: FamilyState; meId: string; now: number; onPress: () => void }) {
   const status = carStatus(state, car.id, now);
   const nameOf = (id: string) => (id === meId ? 'You' : state.members.find((m) => m.id === id)?.name ?? 'Someone');
   const warning = insuranceWarning(car, now);
-  const insured = state.members.filter((m) => car.insuredMemberIds.includes(m.id));
-  const report = car.lastReport;
-  const owner = state.members.find((m) => m.id === car.ownerId);
+  const inUse = status.kind === 'in-use';
+  const nextDay = status.kind === 'free' && status.next ? formatDayLabel(status.next.start, now) : '';
+  const line = inUse
+    ? `${nameOf(status.booking.memberId)} until ${formatTime(effectiveEnd(status.booking))}${status.booking.destination ? ` · ${status.booking.destination}` : ''}`
+    : status.next
+      ? `Free until ${nextDay === 'Today' ? '' : nextDay.toLowerCase() + ' '}${formatTime(status.next.start)}`
+      : 'Free';
 
   return (
-    <Card style={{ gap: space(3), borderTopWidth: 4, borderTopColor: car.color }}>
-      <View style={s.carHeader}>
-        <Ionicons name="car-sport" size={30} color={car.color} />
-        <View style={{ flex: 1 }}>
-          <Text style={s.carName}>{car.name}</Text>
-          <Text style={s.muted}>
-            {[car.model, car.plate, car.seats ? `${car.seats} seats` : null].filter(Boolean).join(' · ')}
-          </Text>
-        </View>
-        <Ionicons name="create-outline" size={20} color={colors.faint} onPress={onEdit} accessibilityLabel={`Edit ${car.name}`} />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${car.name}. ${line}. Open details.`}
+      onPress={onPress}
+      style={({ pressed }) => [s.carRow, pressed && { opacity: 0.75 }]}
+    >
+      <View style={[s.carIcon, { backgroundColor: car.color }]}>
+        <Ionicons name="car-sport" size={26} color="#fff" />
       </View>
-
-      {status.kind === 'in-use' ? (
-        <View style={[s.status, { backgroundColor: colors.dangerSoft }]}>
-          <View style={[s.dot, { backgroundColor: colors.danger }]} />
-          <Text style={[s.statusText, { color: colors.danger }]} onPress={() => onOpenBooking(status.booking.id)}>
-            {nameOf(status.booking.memberId)} {status.booking.memberId === meId ? 'have' : 'has'} it until {formatTime(effectiveEnd(status.booking))}
-            {status.booking.destination ? ` · going to ${status.booking.destination}` : ''}
+      <View style={{ flex: 1, gap: 3 }}>
+        <View style={s.nameRow}>
+          <Text style={s.carName} numberOfLines={1}>
+            {car.name}
+          </Text>
+          {warning && <Ionicons name="alert-circle" size={16} color={warning.includes('expired') ? colors.danger : colors.warning} />}
+        </View>
+        <View style={s.statusRow}>
+          <View style={[s.dot, { backgroundColor: inUse ? colors.danger : colors.success }]} />
+          <Text style={[s.status, { color: inUse ? colors.danger : colors.success }]} numberOfLines={1}>
+            {line}
           </Text>
         </View>
-      ) : (
-        <View style={[s.status, { backgroundColor: colors.successSoft }]}>
-          <View style={[s.dot, { backgroundColor: colors.success }]} />
-          <Text style={[s.statusText, { color: colors.success }]}>
-            {status.next
-              ? `Free for ${formatDuration(status.next.start - now)} · next: ${nameOf(status.next.memberId)} ${formatDayLabel(status.next.start, now).toLowerCase()} at ${formatTime(status.next.start)}`
-              : 'Free — no upcoming bookings'}
-          </Text>
-        </View>
-      )}
-
-      {report && (
-        <View style={s.report}>
-          <Ionicons name="location-outline" size={16} color={colors.muted} />
-          <Text style={s.reportText}>
-            {report.parkedAt ?? 'Location not noted'}
-            {report.fuel ? ` · Fuel ${FUEL_LABELS[report.fuel]}` : ''}
-            {report.note ? ` · “${report.note}”` : ''}
-            <Text style={{ color: colors.faint }}>  — {nameOf(report.memberId)}, {timeAgo(report.at, now)}</Text>
-          </Text>
-        </View>
-      )}
-
-      {owner && (
-        <View style={s.report}>
-          <Ionicons name="key-outline" size={16} color={colors.muted} />
-          <Text style={s.reportText}>
-            Owner: <Text style={{ fontWeight: '700', color: colors.text }}>{owner.id === meId ? 'You' : owner.name}</Text>
-            {owner.id === meId ? ' — you approve bookings' : ` — bookings need ${owner.name}'s OK`}
-          </Text>
-        </View>
-      )}
-
-      <View style={{ gap: space(2) }}>
-        <Text style={s.label}>
-          <Ionicons name="shield-checkmark-outline" size={13} /> Insured drivers{car.insuranceCompany ? ` · ${car.insuranceCompany}` : ''}
-        </Text>
-        <View style={s.wrap}>
-          {insured.length === 0 && <Text style={s.muted}>No one yet — edit the car to add drivers.</Text>}
-          {insured.map((m) => (
-            <View key={m.id} style={s.driver}>
-              <Avatar member={m} size={22} />
-              <Text style={s.driverName}>{m.id === meId ? 'You' : m.name}</Text>
-            </View>
-          ))}
-        </View>
-        {warning && <Banner tone={warning.includes('expired') ? 'danger' : 'warning'}>{warning}</Banner>}
       </View>
-
-      {car.insuredMemberIds.includes(meId) ? (
-        <Button
-          small
-          variant="secondary"
-          icon={needsApproval(car, meId) ? 'paper-plane-outline' : 'calendar-outline'}
-          title={needsApproval(car, meId) ? `Ask ${owner?.name ?? 'the owner'} for ${car.name}` : `Book ${car.name}`}
-          onPress={onBook}
-        />
-      ) : (
-        <Chip label="You're not insured on this car" color={colors.muted} icon="lock-closed-outline" />
-      )}
-    </Card>
+      <Ionicons name="chevron-forward" size={20} color={colors.faint} />
+    </Pressable>
   );
 }
 
 const s = StyleSheet.create({
   content: { padding: space(5), paddingBottom: space(12) },
   hello: { fontSize: 28, fontWeight: '800', color: colors.text },
-  sub: { fontSize: 15, color: colors.muted, marginTop: 2 },
-  carHeader: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
-  carName: { fontSize: 19, fontWeight: '800', color: colors.text },
-  muted: { fontSize: 13, color: colors.muted },
-  status: { flexDirection: 'row', alignItems: 'center', gap: space(2), padding: space(2.5), borderRadius: 10 },
-  dot: { width: 9, height: 9, borderRadius: 5 },
-  statusText: { flex: 1, fontSize: 14, fontWeight: '600' },
-  report: { flexDirection: 'row', gap: space(1.5) },
-  reportText: { flex: 1, fontSize: 13, color: colors.muted },
-  label: { fontSize: 12, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space(2) },
-  driver: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.bg, borderRadius: 999, paddingRight: 10, padding: 2 },
-  driverName: { fontSize: 13, fontWeight: '600', color: colors.text },
+  muted: { fontSize: 14, color: colors.muted },
+  requests: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space(3),
+    marginTop: space(4),
+    padding: space(3),
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  requestsCount: {
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.warning,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  requestsCountText: { color: '#fff', fontWeight: '800' },
+  requestsText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.warning },
+  carRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space(3),
+    padding: space(3),
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    ...shadow,
+  },
+  carIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: space(1.5) },
+  carName: { fontSize: 18, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: space(1.5) },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  status: { flex: 1, fontSize: 14, fontWeight: '600' },
 });

@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLoadedFamily } from '../data/FamilyContext';
 import { approveBooking, declineBooking } from '../logic/bookings';
+import { decisionMessage } from '../logic/messages';
+import { useSheets } from '../navigation';
 import { formatDuration, formatRange } from '../logic/time';
 import { colors, radius, space } from '../theme';
 import type { Booking } from '../types';
 import { Avatar, Banner, Button, Card } from './ui';
 
 /** Approve / decline buttons for a request on a car you own. */
-export function RequestActions({ booking, onDone }: { booking: Booking; onDone?: () => void }) {
-  const { me, act } = useLoadedFamily();
+export function RequestActions({ booking }: { booking: Booking }) {
+  const { state, me, act } = useLoadedFamily();
+  const sheets = useSheets();
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState<'approve' | 'decline' | null>(null);
@@ -22,7 +25,14 @@ export function RequestActions({ booking, onDone }: { booking: Booking; onDone?:
       await act((s) =>
         kind === 'approve' ? approveBooking(s, booking.id, me.id) : declineBooking(s, booking.id, me.id, reason),
       );
-      onDone?.();
+      // Offer to tell the person who asked.
+      const approved = kind === 'approve';
+      const name = state.members.find((m) => m.id === booking.memberId)?.name ?? 'them';
+      sheets.message({
+        to: booking.memberId,
+        title: approved ? `Approved! Tell ${name}` : `Declined. Tell ${name}`,
+        text: decisionMessage(state, booking, approved, reason),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

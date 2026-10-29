@@ -31,13 +31,12 @@ export function DateTimeField({
         style={({ pressed }) => [s.field, pressed && { opacity: 0.7 }]}
       >
         <View style={s.fieldPart}>
-          <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-          <Text style={s.fieldText}>{formatDayLabel(value)}</Text>
+          <Ionicons name="calendar-outline" size={15} color={colors.primary} />
+          <Text style={s.dayText} numberOfLines={1}>
+            {formatDayLabel(value)}
+          </Text>
         </View>
-        <View style={s.fieldPart}>
-          <Ionicons name="time-outline" size={18} color={colors.primary} />
-          <Text style={[s.fieldText, s.mono]}>{formatTime(value)}</Text>
-        </View>
+        <Text style={[s.timeText, s.mono]}>{formatTime(value)}</Text>
       </Pressable>
       {open && (
         <DateTimeSheet
@@ -141,8 +140,7 @@ function Cell({ label, selected, onPress }: { label: string; selected: boolean; 
 
 const s = StyleSheet.create({
   field: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 2,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -150,8 +148,9 @@ const s = StyleSheet.create({
     paddingHorizontal: space(3.5),
     paddingVertical: space(3),
   },
-  fieldPart: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
-  fieldText: { fontSize: 16, fontWeight: '600', color: colors.text },
+  fieldPart: { flexDirection: 'row', alignItems: 'center', gap: space(1.5) },
+  dayText: { fontSize: 14, fontWeight: '600', color: colors.muted, flexShrink: 1 },
+  timeText: { fontSize: 24, fontWeight: '800', color: colors.text },
   mono: { fontVariant: ['tabular-nums'] },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   sheet: {

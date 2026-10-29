@@ -22,7 +22,7 @@ Built with **React Native + Expo + TypeScript**, with optional real-time sync th
 | 🙅 **One car per person** | Nobody can hold two cars at the same time. |
 | 🟢 **Live status** | "Free for 2h 6m · next: Dad at 17:00" or "Noa has it until 22:30", updated every minute. |
 | 🔑 **"I'm back" return flow** | End a booking early to free the car, and leave a note: where it's parked, how much fuel is left, any problems. The next driver sees it on the car card. |
-| 💬 **Ask for the car** | Message whoever has the booking straight from the app (uses the phone's share sheet). |
+| 💬 **WhatsApp / SMS** | After you send a request, or an owner approves or declines one, the app offers a ready-written message (which you can edit) to send on WhatsApp or SMS. It goes straight to the person's saved phone number. |
 | 👨‍👩‍👧 **Family management** | Add or edit people and cars, choose colors, and invite family with a 6-character code. |
 | 🔄 **Real-time sync** | With Firebase connected, every phone sees changes instantly. Without it, the app runs in demo mode on one device. |
 

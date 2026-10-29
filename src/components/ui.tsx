@@ -161,6 +161,81 @@ export function Label({ children }: { children: React.ReactNode }) {
   return <Text style={styles.label}>{children}</Text>;
 }
 
+/** iOS-style segmented tabs, used inside a screen (e.g. Members | Cars). */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { key: T; label: string; badge?: number }[];
+  value: T;
+  onChange: (key: T) => void;
+}) {
+  return (
+    <View style={styles.segmented} accessibilityRole="tablist">
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <Pressable
+            key={o.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => onChange(o.key)}
+            style={[styles.segment, on && styles.segmentOn]}
+          >
+            <Text style={[styles.segmentText, on && { color: colors.text }]}>{o.label}</Text>
+            {!!o.badge && (
+              <View style={styles.segmentBadge}>
+                <Text style={styles.segmentBadgeText}>{o.badge}</Text>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** A tappable list row with a chevron, for lists that open a details page. */
+export function ListRow({
+  left,
+  title,
+  subtitle,
+  right,
+  onPress,
+  accessibilityLabel,
+}: {
+  left?: React.ReactNode;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  right?: React.ReactNode;
+  onPress: () => void;
+  accessibilityLabel?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={({ pressed }) => [styles.listRow, pressed && { opacity: 0.7 }]}
+    >
+      {left}
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.listTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.listSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {right}
+      <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+    </Pressable>
+  );
+}
+
 export function EmptyState({ icon, title, text }: { icon: IconName; title: string; text?: string }) {
   return (
     <View style={styles.empty}>
@@ -227,6 +302,39 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
+  segmented: { flexDirection: 'row', backgroundColor: colors.border, borderRadius: radius.md, padding: 3, gap: 3 },
+  segment: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: space(2),
+    borderRadius: radius.sm + 1,
+  },
+  segmentOn: { backgroundColor: colors.card, ...shadow },
+  segmentText: { fontSize: 14, fontWeight: '700', color: colors.muted },
+  segmentBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space(3),
+    padding: space(3),
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    ...shadow,
+  },
+  listTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  listSubtitle: { fontSize: 13, color: colors.muted },
   empty: { alignItems: 'center', padding: space(8), gap: space(2) },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.muted },
   emptyText: { fontSize: 14, color: colors.faint, textAlign: 'center' },

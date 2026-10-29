@@ -1,43 +1,46 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BookingRow } from '../components/BookingRow';
-import { Card, Chip, EmptyState, SectionTitle } from '../components/ui';
+import { RequestCard } from '../components/RequestCard';
+import { Card, Chip, EmptyState, Segmented, SectionTitle } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
 import { effectiveEnd, requestsFor, statusOf } from '../logic/bookings';
-import { RequestCard } from '../components/RequestCard';
 import { formatDayLabel, startOfDay } from '../logic/time';
 import { useSheets } from '../navigation';
 import { colors, space } from '../theme';
 import type { Booking } from '../types';
 import { useNow } from './HomeScreen';
 
-/** Agenda view: every upcoming booking grouped by day. */
-export function BookingsScreen() {
+export type BookingsSection = 'upcoming' | 'requests' | 'history';
+
+/**
+ * Upcoming – approved bookings by day (everyone or just me).
+ * Requests – ones waiting for your OK, plus your own pending/declined requests.
+ * History  – past bookings.
+ */
+export function BookingsScreen({
+  section,
+  onSection,
+}: {
+  section: BookingsSection;
+  onSection: (s: BookingsSection) => void;
+}) {
   const { state, me } = useLoadedFamily();
   const sheets = useSheets();
   const now = useNow();
   const [who, setWho] = useState<'everyone' | 'me'>('everyone');
-  const [showPast, setShowPast] = useState(false);
 
-  const requests = requestsFor(state, me.id, now);
-  const requestIds = new Set(requests.map((b) => b.id));
-  // Approved bookings are public. Requests are only shown to the person asking
-  // (the owner sees them in "Waiting for your OK" above). Declined ones only to the requester.
-  const visible = state.bookings.filter((b) => {
-    if (who === 'me' && b.memberId !== me.id) return false;
-    const status = statusOf(b);
-    if (status === 'approved') return true;
-    if (status === 'pending') return b.memberId === me.id && !requestIds.has(b.id);
-    return false;
-  });
-  const declined = state.bookings
-    .filter((b) => statusOf(b) === 'declined' && b.memberId === me.id && b.end > now)
+  const toApprove = requestsFor(state, me.id, now);
+  const myRequests = state.bookings
+    .filter((b) => b.memberId === me.id && statusOf(b) !== 'approved' && b.end > now)
     .sort((a, b) => a.start - b.start);
-  const upcoming = visible.filter((b) => effectiveEnd(b) > now).sort((a, b) => a.start - b.start);
-  const past = visible
-    .filter((b) => effectiveEnd(b) <= now && statusOf(b) === 'approved')
+
+  const approved = state.bookings.filter((b) => statusOf(b) === 'approved' && (who === 'everyone' || b.memberId === me.id));
+  const upcoming = approved.filter((b) => effectiveEnd(b) > now).sort((a, b) => a.start - b.start);
+  const past = approved
+    .filter((b) => effectiveEnd(b) <= now)
     .sort((a, b) => b.start - a.start)
-    .slice(0, 20);
+    .slice(0, 30);
 
   const groups = new Map<number, Booking[]>();
   for (const b of upcoming) {
@@ -46,73 +49,92 @@ export function BookingsScreen() {
     groups.set(key, [...(groups.get(key) ?? []), b]);
   }
 
+  const row = (b: Booking) => (
+    <BookingRow key={b.id} booking={b} state={state} meId={me.id} onPress={() => sheets.showBooking(b.id)} />
+  );
+
   return (
-    <ScrollView contentContainerStyle={s.content}>
-      <Text style={s.title}>Bookings</Text>
-      <View style={s.tabs}>
-        <Chip label="Everyone" icon="people-outline" selected={who === 'everyone'} onPress={() => setWho('everyone')} />
-        <Chip label="Just me" icon="person-outline" selected={who === 'me'} onPress={() => setWho('me')} />
+    <View style={{ flex: 1 }}>
+      <View style={s.header}>
+        <Text style={s.title}>Bookings</Text>
+        <Segmented
+          value={section}
+          onChange={onSection}
+          options={[
+            { key: 'upcoming', label: 'Upcoming' },
+            { key: 'requests', label: 'Requests', badge: toApprove.length },
+            { key: 'history', label: 'History' },
+          ]}
+        />
+        {section !== 'requests' && (
+          <View style={s.filters}>
+            <Chip label="Everyone" icon="people-outline" selected={who === 'everyone'} onPress={() => setWho('everyone')} />
+            <Chip label="Just me" icon="person-outline" selected={who === 'me'} onPress={() => setWho('me')} />
+          </View>
+        )}
       </View>
 
-      {requests.length > 0 && (
-        <View>
-          <SectionTitle>Waiting for your OK</SectionTitle>
-          <View style={{ gap: space(3) }}>
-            {requests.map((b) => (
-              <RequestCard key={b.id} booking={b} onOpen={() => sheets.showBooking(b.id)} />
-            ))}
-          </View>
-        </View>
-      )}
+      <ScrollView contentContainerStyle={s.content}>
+        {section === 'upcoming' &&
+          (upcoming.length === 0 ? (
+            <Card>
+              <EmptyState icon="calendar-clear-outline" title="No upcoming bookings" text="Tap + to book a car." />
+            </Card>
+          ) : (
+            [...groups.entries()].map(([day, list]) => (
+              <View key={day}>
+                <SectionTitle>{formatDayLabel(day, now)}</SectionTitle>
+                <View style={{ gap: space(2) }}>{list.map(row)}</View>
+              </View>
+            ))
+          ))}
 
-      {declined.length > 0 && (
-        <View>
-          <SectionTitle>Declined</SectionTitle>
-          <View style={{ gap: space(2) }}>
-            {declined.map((b) => (
-              <BookingRow key={b.id} booking={b} state={state} meId={me.id} onPress={() => sheets.showBooking(b.id)} />
-            ))}
-          </View>
-        </View>
-      )}
+        {section === 'requests' && (
+          <>
+            {toApprove.length > 0 && (
+              <View>
+                <SectionTitle>Waiting for your OK</SectionTitle>
+                <View style={{ gap: space(3) }}>
+                  {toApprove.map((b) => (
+                    <RequestCard key={b.id} booking={b} onOpen={() => sheets.showBooking(b.id)} />
+                  ))}
+                </View>
+              </View>
+            )}
+            {myRequests.length > 0 && (
+              <View>
+                <SectionTitle>Your requests</SectionTitle>
+                <View style={{ gap: space(2) }}>{myRequests.map(row)}</View>
+              </View>
+            )}
+            {toApprove.length === 0 && myRequests.length === 0 && (
+              <Card style={{ marginTop: space(4) }}>
+                <EmptyState
+                  icon="checkmark-done-outline"
+                  title="No requests"
+                  text="When someone asks for a car you own, or you ask for someone else's, it shows up here."
+                />
+              </Card>
+            )}
+          </>
+        )}
 
-      {upcoming.length === 0 && (
-        <Card style={{ marginTop: space(4) }}>
-          <EmptyState icon="calendar-clear-outline" title="No upcoming bookings" text="Tap “Book” to reserve a car." />
-        </Card>
-      )}
-
-      {[...groups.entries()].map(([day, list]) => (
-        <View key={day}>
-          <SectionTitle>{formatDayLabel(day, now)}</SectionTitle>
-          <View style={{ gap: space(2) }}>
-            {list.map((b) => (
-              <BookingRow key={b.id} booking={b} state={state} meId={me.id} onPress={() => sheets.showBooking(b.id)} />
-            ))}
-          </View>
-        </View>
-      ))}
-
-      {past.length > 0 && (
-        <View>
-          <SectionTitle right={<Chip label={showPast ? 'Hide' : 'Show'} onPress={() => setShowPast((v) => !v)} color={colors.muted} />}>
-            Recent history
-          </SectionTitle>
-          {showPast && (
-            <View style={{ gap: space(2), opacity: 0.75 }}>
-              {past.map((b) => (
-                <BookingRow key={b.id} booking={b} state={state} meId={me.id} onPress={() => sheets.showBooking(b.id)} />
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </ScrollView>
+        {section === 'history' &&
+          (past.length === 0 ? (
+            <Card style={{ marginTop: space(4) }}>
+              <EmptyState icon="time-outline" title="No past bookings yet" />
+            </Card>
+          ) : (
+            <View style={{ gap: space(2), marginTop: space(2) }}>{past.map(row)}</View>
+          ))}
+      </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  content: { padding: space(5), paddingBottom: space(12) },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text },
-  tabs: { flexDirection: 'row', gap: space(2), marginTop: space(3) },
+  header: { padding: space(5), paddingBottom: space(1), gap: space(3) },
+  title: { fontSize: 26, fontWeight: '800', color: colors.text },
+  filters: { flexDirection: 'row', gap: space(2) },
+  content: { paddingHorizontal: space(5), paddingBottom: space(12) },
 });
