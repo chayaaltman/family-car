@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Family Car",
+    "slug": "family-car",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.familycar.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#3D5AFE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.familycar.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "Family Car",
+      "shortName": "Family Car",
+      "themeColor": "#3D5AFE",
+      "backgroundColor": "#F4F5F9"
+    },
+    "scheme": "familycar",
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
