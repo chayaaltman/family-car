@@ -1,0 +1,9 @@
+{
+  "name": "Family Car",
+  "short_name": "Family Car",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F5F9",
+  "theme_color": "#3D5AFE",
+  "icons": [{ "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}

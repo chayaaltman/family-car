@@ -9,6 +9,7 @@ import { bookingsOnDay } from '../logic/bookings';
 import { HOUR, addDays, formatDate, formatDayLabel, roundUpToMinutes, startOfDay } from '../logic/time';
 import { useSheets } from '../navigation';
 import { colors, radius, shadow, space } from '../theme';
+import { L, forwardIcon } from '../i18n';
 
 export function CalendarScreen() {
   const { state, me } = useLoadedFamily();
@@ -31,16 +32,16 @@ export function CalendarScreen() {
     <View style={{ flex: 1 }}>
       <View style={s.top}>
         <View style={s.dayNav}>
-          <Pressable accessibilityLabel="Previous day" hitSlop={10} onPress={() => goTo(addDays(day, -1))}>
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          <Pressable accessibilityLabel={L('Previous day', 'היום הקודם')} hitSlop={10} onPress={() => goTo(addDays(day, -1))}>
+            <Ionicons name={forwardIcon('chevron-back', 'chevron-forward')} size={24} color={colors.text} />
           </Pressable>
-          <Pressable style={s.dayTitle} onPress={() => setShowMonth((v) => !v)} accessibilityLabel="Show month">
+          <Pressable style={s.dayTitle} onPress={() => setShowMonth((v) => !v)} accessibilityLabel={L('Show month', 'הצגת החודש')}>
             <Text style={s.dayTitleText}>{formatDayLabel(day)}</Text>
             {formatDayLabel(day) !== formatDate(day) && <Text style={s.daySub}>{formatDate(day)}</Text>}
             <Ionicons name={showMonth ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
           </Pressable>
-          <Pressable accessibilityLabel="Next day" hitSlop={10} onPress={() => goTo(addDays(day, 1))}>
-            <Ionicons name="chevron-forward" size={24} color={colors.text} />
+          <Pressable accessibilityLabel={L('Next day', 'היום הבא')} hitSlop={10} onPress={() => goTo(addDays(day, 1))}>
+            <Ionicons name={forwardIcon('chevron-forward', 'chevron-back')} size={24} color={colors.text} />
           </Pressable>
         </View>
 
@@ -64,18 +65,18 @@ export function CalendarScreen() {
         )}
 
         <View style={s.filters}>
-          <Chip label="All cars" selected={carFilter === null} onPress={() => setCarFilter(null)} />
+          <Chip label={L('All cars', 'כל הרכבים')} selected={carFilter === null} onPress={() => setCarFilter(null)} />
           {state.cars.map((c) => (
             <Chip key={c.id} label={c.name} color={c.color} icon="car-sport" selected={carFilter === c.id} onPress={() => setCarFilter(c.id)} />
           ))}
-          {startOfDay(Date.now()) !== day && <Chip label="Today" icon="today-outline" onPress={() => goTo(Date.now())} color={colors.muted} />}
+          {startOfDay(Date.now()) !== day && <Chip label={L('Today', 'היום')} icon="today-outline" onPress={() => goTo(Date.now())} color={colors.muted} />}
         </View>
 
         <View style={s.legend}>
           {state.members.map((m) => (
             <View key={m.id} style={s.legendItem}>
               <Avatar member={m} size={14} />
-              <Text style={s.legendText}>{m.id === me.id ? 'You' : m.name}</Text>
+              <Text style={s.legendText}>{m.id === me.id ? L('You', 'אני') : m.name}</Text>
             </View>
           ))}
         </View>
@@ -97,14 +98,15 @@ export function CalendarScreen() {
           }}
         />
       </View>
-      <Text style={s.hint}>Tap an empty hour to book it</Text>
+      <Text style={s.hint}>{L('Tap an empty hour to book it', 'לוחצים על שעה פנויה כדי להזמין')}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
   top: { paddingHorizontal: space(4), paddingTop: space(3) },
-  dayNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  // marginEnd leaves room for the round settings button in the top corner.
+  dayNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginEnd: 48 },
   dayTitle: { flexDirection: 'row', alignItems: 'baseline', gap: space(2) },
   dayTitleText: { fontSize: 22, fontWeight: '800', color: colors.text },
   daySub: { fontSize: 14, color: colors.muted },

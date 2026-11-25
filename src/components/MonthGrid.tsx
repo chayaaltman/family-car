@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MONTHS, WEEKDAYS_SHORT, addMonths, isSameDay, monthGrid, startOfDay } from '../logic/time';
+import { addMonths, isSameDay, monthGrid, monthNames, startOfDay, weekdaysShort } from '../logic/time';
 import { colors, space } from '../theme';
+import { L, forwardIcon } from '../i18n';
 
 interface Props {
   month: number; // any timestamp inside the month to show
@@ -23,19 +24,19 @@ export function MonthGrid({ month, selected, onSelect, onChangeMonth, dotsForDay
   return (
     <View>
       <View style={s.header}>
-        <Pressable accessibilityLabel="Previous month" hitSlop={10} onPress={() => onChangeMonth(addMonths(month, -1))}>
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        <Pressable accessibilityLabel={L('Previous month', 'החודש הקודם')} hitSlop={10} onPress={() => onChangeMonth(addMonths(month, -1))}>
+          <Ionicons name={forwardIcon('chevron-back', 'chevron-forward')} size={22} color={colors.text} />
         </Pressable>
         <Text style={s.title}>
-          {MONTHS[monthIndex]} {new Date(month).getFullYear()}
+          {monthNames()[monthIndex]} {new Date(month).getFullYear()}
         </Text>
-        <Pressable accessibilityLabel="Next month" hitSlop={10} onPress={() => onChangeMonth(addMonths(month, 1))}>
-          <Ionicons name="chevron-forward" size={22} color={colors.text} />
+        <Pressable accessibilityLabel={L('Next month', 'החודש הבא')} hitSlop={10} onPress={() => onChangeMonth(addMonths(month, 1))}>
+          <Ionicons name={forwardIcon('chevron-forward', 'chevron-back')} size={22} color={colors.text} />
         </Pressable>
       </View>
 
       <View style={s.row}>
-        {WEEKDAYS_SHORT.map((d) => (
+        {weekdaysShort().map((d) => (
           <Text key={d} style={s.weekday}>
             {d.charAt(0)}
           </Text>

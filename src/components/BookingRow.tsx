@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { effectiveEnd, isConfirmed, statusOf } from '../logic/bookings';
+import { effectiveEnd, isConfirmed, statusOf, ownerNames } from '../logic/bookings';
 import { formatRange } from '../logic/time';
 import { colors, radius, space } from '../theme';
 import type { Booking, FamilyState } from '../types';
 import { Avatar, Chip } from './ui';
+import { whoLabel } from '../logic/labels';
+import { L, forwardIcon } from '../i18n';
 
 export function BookingRow({
   booking,
@@ -24,7 +26,7 @@ export function BookingRow({
   const end = effectiveEnd(booking);
   const active = isConfirmed(booking) && booking.start <= now && now < end;
   const status = statusOf(booking);
-  const owner = state.members.find((m) => m.id === car?.ownerId);
+  const owners = car ? ownerNames(state, car) : '';
 
   return (
     <Pressable
@@ -35,23 +37,29 @@ export function BookingRow({
       {member && <Avatar member={member} size={36} />}
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.title} numberOfLines={1}>
-          {booking.memberId === meId ? 'You' : member?.name ?? 'Someone'} · {car?.name ?? 'Deleted car'}
+          {whoLabel(state, booking, meId)} · {car?.name ?? L('Deleted car', 'רכב שנמחק')}
         </Text>
         <Text style={s.time}>{formatRange(booking.start, end, now)}</Text>
-        {booking.destination || booking.purpose ? (
+        {booking.pickup || booking.destination || booking.purpose ? (
           <Text style={s.purpose} numberOfLines={1}>
-            {[booking.destination && `📍 ${booking.destination}`, booking.purpose].filter(Boolean).join(' · ')}
+            {[
+              booking.pickup && L(`🙋 Pick up from ${booking.pickup.place}`, `🙋 איסוף מ${booking.pickup.place}`),
+              booking.destination && `📍 ${booking.destination}`,
+              booking.purpose,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
         ) : null}
       </View>
       {status === 'pending' ? (
-        <Chip label={`Waiting for ${owner?.name ?? 'owner'}`} color={colors.warning} icon="time-outline" />
+        <Chip label={L(`Waiting for ${owners || 'owner'}`, `מחכה ל${owners || 'בעלים'}`)} color={colors.warning} icon="time-outline" />
       ) : status === 'declined' ? (
-        <Chip label="Declined" color={colors.danger} icon="close-circle-outline" />
+        <Chip label={L('Declined', 'נדחה')} color={colors.danger} icon="close-circle-outline" />
       ) : active ? (
-        <Chip label="Now" color={colors.success} selected />
+        <Chip label={L('Now', 'עכשיו')} color={colors.success} selected />
       ) : (
-        <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+        <Ionicons name={forwardIcon('chevron-forward', 'chevron-back')} size={18} color={colors.faint} />
       )}
     </Pressable>
   );

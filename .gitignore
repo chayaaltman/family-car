@@ -42,3 +42,6 @@ yarn-error.*
 
 # Firebase keys for this machine
 .env
+
+# Firebase deploy cache
+.firebase/

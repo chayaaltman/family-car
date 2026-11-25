@@ -1,10 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { addSelf, checkMemberPin, isAdmin } from '../logic/admin';
+import { newId } from '../logic/bookings';
 import type { FamilyState, Member } from '../types';
 import { FirebaseStore, generateFamilyCode, isCloudConfigured } from './firebaseStore';
 import { LocalStore } from './localStore';
-import { emptyFamily } from './seed';
+import { emptyFamily, localizeDemo, withPastelColors } from './seed';
 import type { FamilyStore, Mutation } from './store';
+import { L } from '../i18n';
 
 const SETTINGS_KEY = 'familycar:settings:v1';
 
@@ -21,9 +24,15 @@ interface FamilyContextValue {
   storeKind: 'local' | 'cloud' | null;
   error: string | null;
   me: Member | null;
+  /** True if `me` may add, edit or remove people and cars (the family admin, or anyone in the demo). */
+  canManage: boolean;
   /** Runs a state transition. Rejects with a RuleError if a family rule is broken. */
   act: (mutation: Mutation) => Promise<void>;
   setMe: (memberId: string | null) => Promise<void>;
+  /** First time on this phone: add yourself to the family with your own PIN. */
+  joinAsNew: (name: string, pin: string) => Promise<void>;
+  /** Back on a new phone: choose yourself, proven by your PIN. Returns false if the PIN is wrong. */
+  signInAs: (memberId: string, pin: string) => Promise<boolean>;
   startDemo: () => Promise<void>;
   createFamily: (yourName: string) => Promise<string>;
   joinFamily: (code: string) => Promise<void>;
@@ -67,7 +76,8 @@ export function FamilyProvider({ children }: { children: React.ReactNode }) {
     if (!store) return;
     return store.subscribe(
       (s) => {
-        setState(s);
+        // The demo's sample text follows the app language; a real family's data is shown as typed.
+        setState(withPastelColors(store.kind === 'local' ? localizeDemo(s) : s));
         setError(null);
       },
       (e) => setError(e.message),
@@ -83,11 +93,25 @@ export function FamilyProvider({ children }: { children: React.ReactNode }) {
       storeKind: store?.kind ?? null,
       error,
       me,
+      canManage: !!me && (store?.kind === 'local' || isAdmin(state!, me.id)),
       act: async (mutation) => {
-        if (!store) throw new Error('Not connected to a family yet.');
+        if (!store) throw new Error(L('Not connected to a family yet.', 'עדיין לא מחובר למשפחה.'));
         await store.update(mutation);
       },
       setMe: (memberId) => saveSettings({ ...settings, meId: memberId ?? undefined }),
+      joinAsNew: async (name, pin) => {
+        if (!store) throw new Error(L('Not connected to a family yet.', 'עדיין לא מחובר למשפחה.'));
+        // Make the id up front: the update may retry, and it must add the same person each time.
+        const id = newId();
+        await store.update((st) => addSelf(st, name, pin, id).state);
+        await saveSettings({ ...settings, meId: id });
+      },
+      signInAs: async (memberId, pin) => {
+        const member = state?.members.find((m) => m.id === memberId);
+        if (!state || !member || !checkMemberPin(state, member, pin)) return false;
+        await saveSettings({ ...settings, meId: memberId });
+        return true;
+      },
       startDemo: () => saveSettings({ mode: 'demo' }),
       createFamily: async (yourName) => {
         const code = generateFamilyCode();
@@ -98,7 +122,7 @@ export function FamilyProvider({ children }: { children: React.ReactNode }) {
       },
       joinFamily: async (rawCode) => {
         const code = rawCode.trim().toUpperCase();
-        if (!(await FirebaseStore.exists(code))) throw new Error(`No family found with code ${code}.`);
+        if (!(await FirebaseStore.exists(code))) throw new Error(L(`No family found with code ${code}.`, `לא נמצאה משפחה עם הקוד ${code}.`));
         await saveSettings({ mode: 'cloud', familyCode: code });
       },
       leaveFamily: () => saveSettings(isCloudConfigured ? {} : { mode: 'demo' }),

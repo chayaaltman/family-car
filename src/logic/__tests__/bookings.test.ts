@@ -14,6 +14,8 @@ import {
   returnCar,
   saveBooking,
   validateBooking,
+  ownerNames,
+  ownersOf,
 } from '../bookings';
 import { DAY, HOUR, MINUTE } from '../time';
 
@@ -256,3 +258,56 @@ describe('owner approval', () => {
     expect(last(s).status).toBe('approved');
   });
 });
+
+describe('several owners', () => {
+  // Mom and Eli both own the Corolla.
+  const shared = (): FamilyState => {
+    const s = family();
+    s.cars[0] = { ...s.cars[0], ownerIds: ['mom', 'eli'] };
+    return s;
+  };
+  const ask = (s: FamilyState) => saveBooking(s, { carId: 'car1', memberId: 'noa', start: at(13), end: at(14) }, NOW);
+  const last = (s: FamilyState) => s.bookings[s.bookings.length - 1];
+
+  it('shows a request to every owner, and any one of them can approve it', () => {
+    const s = ask(shared());
+    expect(last(s).status).toBe('pending');
+    expect(requestsFor(s, 'mom', NOW)).toHaveLength(1);
+    expect(requestsFor(s, 'eli', NOW)).toHaveLength(1);
+    const approved = approveBooking(s, last(s).id, 'eli', NOW);
+    expect(last(approved).status).toBe('approved');
+    expect(last(approved).decidedBy).toBe('eli');
+  });
+
+  it('any owner can decline, but nobody else can', () => {
+    const s = ask(shared());
+    expect(last(declineBooking(s, last(s).id, 'mom', 'Sorry', NOW)).status).toBe('declined');
+    expect(() => approveBooking(s, last(s).id, 'noa', NOW)).toThrow(RuleError);
+  });
+
+  it("owners don't need approval for their own car", () => {
+    const s = saveBooking(shared(), { carId: 'car1', memberId: 'mom', start: at(13), end: at(14) }, NOW);
+    expect(last(s).status).toBe('approved');
+  });
+
+  it('still reads cars saved with a single owner', () => {
+    const s = family();
+    s.cars[0] = { ...s.cars[0], ownerId: 'mom' };
+    expect(ownersOf(s.cars[0])).toEqual(['mom']);
+    const saved = upsertCar(s, s.cars[0], NOW).cars[0];
+    expect(saved.ownerIds).toEqual(['mom']);
+    expect(saved.ownerId).toBeUndefined();
+  });
+
+  it('removing a person removes them as an owner too', () => {
+    const s = deleteMember(shared(), 'eli', NOW);
+    expect(ownersOf(s.cars[0])).toEqual(['mom']);
+  });
+
+  it('names the owners nicely', () => {
+    const s = shared();
+    expect(ownerNames(s, s.cars[0])).toBe('Mom or Eli');
+    expect(ownerNames(s, s.cars[0], 'and')).toBe('Mom and Eli');
+  });
+});
+

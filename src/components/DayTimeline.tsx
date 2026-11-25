@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { bookingsOnDay, effectiveEnd } from '../logic/bookings';
+import { bookingsOnDay, effectiveEnd, involves } from '../logic/bookings';
 import { HOUR, MINUTE, endOfDay, formatTime, isSameDay, startOfDay } from '../logic/time';
-import { colors, onColor, radius, space, tint } from '../theme';
+import { colors, deepen, onColor, radius, space, tint } from '../theme';
 import type { Booking, Car, Member } from '../types';
+import { whoLabel } from '../logic/labels';
+import { L } from '../i18n';
 
 const HOUR_HEIGHT = 56;
 const GUTTER = 48;
@@ -53,8 +55,8 @@ export function DayTimeline({ day, cars, bookings, members, meId, onPressBooking
       <View style={[s.headerRow, { paddingLeft: GUTTER }]}>
         {cars.map((car) => (
           <View key={car.id} style={s.headerCell}>
-            <Ionicons name="car-sport" size={16} color={car.color} />
-            <Text numberOfLines={1} style={[s.headerText, { color: car.color }]}>
+            <Ionicons name="car-sport" size={16} color={deepen(car.color)} />
+            <Text numberOfLines={1} style={[s.headerText, { color: deepen(car.color) }]}>
               {car.name}
             </Text>
           </View>
@@ -77,7 +79,7 @@ export function DayTimeline({ day, cars, bookings, members, meId, onPressBooking
               {Array.from({ length: hours }, (_, h) => (
                 <Pressable
                   key={h}
-                  accessibilityLabel={`Book ${car.name} at ${h}:00`}
+                  accessibilityLabel={L(`Book ${car.name} at ${h}:00`, `הזמנת ${car.name} ב־${h}:00`)}
                   onPress={() => onPressEmpty(car.id, dayStart + h * HOUR)}
                   style={({ pressed }) => [
                     s.hourSlot,
@@ -88,40 +90,41 @@ export function DayTimeline({ day, cars, bookings, members, meId, onPressBooking
               ))}
 
               {bookingsOnDay(bookings.filter((b) => b.carId === car.id), day).map((b) => {
-                const member = memberById.get(b.memberId);
+                // A pick-up is colored by its driver once someone says yes.
+                const member = memberById.get(b.pickup?.driverId ?? b.memberId);
                 const color = member?.color ?? colors.muted;
                 const top = y(b.start);
                 const height = Math.max(y(effectiveEnd(b)) - top, 26);
-                const mine = b.memberId === meId;
+                const mine = involves(b, meId);
                 const compact = height < 48;
                 return (
                   <Pressable
                     key={b.id}
                     onPress={() => onPressBooking(b)}
-                    accessibilityLabel={`${member?.name ?? 'Someone'} has ${car.name} ${formatTime(b.start)} to ${formatTime(effectiveEnd(b))}`}
+                    accessibilityLabel={`${whoLabel({ members }, b, meId)}: ${car.name} ${formatTime(b.start)}–${formatTime(effectiveEnd(b))}`}
                     style={[
                       s.block,
                       {
                         top,
                         height,
-                        backgroundColor: mine ? color : tint(color, 0.8),
+                        backgroundColor: mine ? color : tint(color, 0.6),
                         borderLeftColor: color,
                       },
                     ]}
                   >
                     <Text numberOfLines={1} style={[s.blockName, { color: mine ? onColor(color) : colors.text }]}>
-                      {mine ? 'You' : member?.name ?? 'Someone'}
+                      {whoLabel({ members }, b, meId)}
                       {compact ? `  ${formatTime(b.start)}` : ''}
                     </Text>
                     {!compact && (
                       <Text numberOfLines={1} style={[s.blockTime, { color: mine ? onColor(color) : colors.muted }]}>
                         {formatTime(b.start)}–{formatTime(effectiveEnd(b))}
-                        {b.start < dayStart ? ' (from earlier)' : ''}
+                        {b.start < dayStart ? L(' (from earlier)', ' (מקודם)') : ''}
                       </Text>
                     )}
-                    {height > 70 && b.destination ? (
+                    {height > 70 && (b.pickup || b.destination) ? (
                       <Text numberOfLines={1} style={[s.blockTime, { color: mine ? onColor(color) : colors.muted }]}>
-                        📍 {b.destination}
+                        {b.pickup ? `🙋 ${b.pickup.place}` : `📍 ${b.destination}`}
                       </Text>
                     ) : null}
                     {height > 90 && b.purpose ? (

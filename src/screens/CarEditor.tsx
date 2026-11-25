@@ -5,14 +5,15 @@ import { MonthGrid } from '../components/MonthGrid';
 import { Avatar, Banner, Button, Field, Label } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
 import { CAR_COLORS } from '../data/seed';
-import { deleteCar, newId, upsertCar } from '../logic/bookings';
+import { deleteCar, newId, ownerNames, ownersOf, upsertCar } from '../logic/bookings';
 import { DAY, endOfDay, formatDate } from '../logic/time';
 import { colors, radius, space, tint } from '../theme';
 import type { Car } from '../types';
 import { confirm } from './BookingDetails';
+import { L } from '../i18n';
 
 export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => void }) {
-  const { state, act } = useLoadedFamily();
+  const { state, act, canManage } = useLoadedFamily();
   const existing = state.cars.find((c) => c.id === carId);
 
   const [car, setCar] = useState<Car>(
@@ -28,6 +29,10 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
   const [month, setMonth] = useState(car.insuranceExpires ?? Date.now());
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<Car>) => setCar((c) => ({ ...c, ...patch }));
+
+  const owners = ownersOf(car);
+  const toggleOwner = (memberId: string) =>
+    set({ ownerId: undefined, ownerIds: owners.includes(memberId) ? owners.filter((id) => id !== memberId) : [...owners, memberId] });
 
   const toggleInsured = (memberId: string) =>
     set({
@@ -48,17 +53,17 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-        <Text style={s.title}>{existing ? `Edit ${existing.name}` : 'Add a car'}</Text>
+        <Text style={s.title}>{existing ? L(`Edit ${existing.name}`, `עריכת ${existing.name}`) : L('Add a car', 'הוספת רכב')}</Text>
 
-        <Field label="Nickname" placeholder="Corolla, the white one…" value={car.name} onChangeText={(name) => set({ name })} maxLength={24} />
-        <Field label="Make & model" placeholder="Toyota Corolla 2019" value={car.model ?? ''} onChangeText={(model) => set({ model })} />
+        <Field label={L('Nickname', 'כינוי')} placeholder={L('Corolla, the white one…', 'הקורולה, הלבנה…')} value={car.name} onChangeText={(name) => set({ name })} maxLength={24} />
+        <Field label={L('Make & model', 'יצרן ודגם')} placeholder={L('Toyota Corolla 2019', 'טויוטה קורולה 2019')} value={car.model ?? ''} onChangeText={(model) => set({ model })} />
         <View style={s.row}>
           <View style={{ flex: 2 }}>
-            <Field label="License plate" placeholder="12-345-67" value={car.plate ?? ''} onChangeText={(plate) => set({ plate })} autoCapitalize="characters" />
+            <Field label={L('License plate', 'מספר רישוי')} placeholder="12-345-67" value={car.plate ?? ''} onChangeText={(plate) => set({ plate })} autoCapitalize="characters" />
           </View>
           <View style={{ flex: 1 }}>
             <Field
-              label="Seats"
+              label={L('Seats', 'מושבים')}
               keyboardType="number-pad"
               value={car.seats ? String(car.seats) : ''}
               onChangeText={(t) => set({ seats: parseInt(t, 10) || undefined })}
@@ -66,12 +71,12 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
           </View>
         </View>
 
-        <Label>Color in the calendar</Label>
+        <Label>{L('Color in the calendar', 'צבע ביומן')}</Label>
         <View style={s.row}>
           {CAR_COLORS.map((c) => (
             <Pressable
               key={c}
-              accessibilityLabel={`Color ${c}`}
+              accessibilityLabel={`${L('Color', 'צבע')} ${c}`}
               accessibilityState={{ selected: car.color === c }}
               onPress={() => set({ color: c })}
               style={[s.swatch, { backgroundColor: c }, car.color === c && s.swatchSelected]}
@@ -79,43 +84,52 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
           ))}
         </View>
 
-        <Text style={s.section}>Owner</Text>
-        <Label>Who approves bookings for this car?</Label>
-        <View style={s.row}>
-          <Pressable
-            onPress={() => set({ ownerId: undefined })}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: !car.ownerId }}
-            style={[s.ownerChip, !car.ownerId && s.ownerChipOn]}
-          >
-            <Ionicons name="lock-open-outline" size={18} color={!car.ownerId ? colors.primary : colors.muted} />
-            <Text style={[s.ownerText, !car.ownerId && { color: colors.primary }]}>No one – anyone can book</Text>
-          </Pressable>
-          {state.members.map((m) => {
-            const on = car.ownerId === m.id;
-            return (
+        <Text style={s.section}>{L('Owners', 'בעלים')}</Text>
+        {canManage ? (
+          <>
+            <Label>{L('Who approves bookings for this car? Pick one or more.', 'מי מאשר הזמנות לרכב הזה? אפשר לבחור כמה.')}</Label>
+            <View style={s.row}>
               <Pressable
-                key={m.id}
-                onPress={() => set({ ownerId: m.id })}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                style={[s.ownerChip, on && s.ownerChipOn]}
+                onPress={() => set({ ownerIds: [], ownerId: undefined })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: owners.length === 0 }}
+                style={[s.ownerChip, owners.length === 0 && s.ownerChipOn]}
               >
-                <Avatar member={m} size={22} />
-                <Text style={[s.ownerText, on && { color: colors.primary }]}>{m.name}</Text>
+                <Ionicons name="lock-open-outline" size={18} color={owners.length === 0 ? colors.primary : colors.muted} />
+                <Text style={[s.ownerText, owners.length === 0 && { color: colors.primary }]}>{L('No one – anyone can book', 'אף אחד – כולם יכולים להזמין')}</Text>
               </Pressable>
-            );
-          })}
-        </View>
-        {car.ownerId && (
+              {state.members.map((m) => {
+                const on = owners.includes(m.id);
+                return (
+                  <Pressable
+                    key={m.id}
+                    onPress={() => toggleOwner(m.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    style={[s.ownerChip, on && s.ownerChipOn]}
+                  >
+                    <Avatar member={m} size={22} />
+                    <Text style={[s.ownerText, on && { color: colors.primary }]}>{m.name}</Text>
+                    {on && <Ionicons name="checkmark" size={16} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <Text style={s.hint}>{L('Only the family admin can change who owns this car.', 'רק מנהל/ת המשפחה יכול/ה לשנות מי הבעלים של הרכב.')}</Text>
+        )}
+        {owners.length > 0 && (
           <Text style={s.hint}>
-            When someone else books {car.name || 'this car'}, it waits for{' '}
-            {state.members.find((m) => m.id === car.ownerId)?.name}'s approval before it goes on the calendar.
+            {L(
+              `When someone else books ${car.name || 'this car'}, it waits for ${owners.length > 1 ? `one of ${ownerNames(state, car, 'and')}` : ownerNames(state, car)} to approve before it goes on the calendar.`,
+              `כשמישהו אחר מזמין את ${car.name || 'הרכב הזה'}, ההזמנה מחכה לאישור של ${owners.length > 1 ? `אחד מ: ${ownerNames(state, car, 'and')}` : ownerNames(state, car)} לפני שהיא נכנסת ליומן.`,
+            )}
           </Text>
         )}
 
-        <Text style={s.section}>Insurance</Text>
-        <Label>Who is insured to drive it?</Label>
+        <Text style={s.section}>{L('Insurance', 'ביטוח')}</Text>
+        <Label>{L('Who is insured to drive it?', 'למי יש ביטוח לנהוג בו?')}</Label>
         <View style={{ gap: space(2) }}>
           {state.members.map((m) => {
             const on = car.insuredMemberIds.includes(m.id);
@@ -125,7 +139,7 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
                 onPress={() => toggleInsured(m.id)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: on }}
-                style={[s.memberRow, on && { borderColor: colors.success, backgroundColor: tint('#1F9D55', 0.92) }]}
+                style={[s.memberRow, on && { borderColor: colors.success, backgroundColor: colors.successSoft }]}
               >
                 <Avatar member={m} size={30} />
                 <Text style={s.memberName}>{m.name}</Text>
@@ -134,12 +148,12 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
             );
           })}
         </View>
-        <Field label="Insurance company" placeholder="Optional" value={car.insuranceCompany ?? ''} onChangeText={(insuranceCompany) => set({ insuranceCompany })} />
+        <Field label={L('Insurance company', 'חברת ביטוח')} placeholder={L('Optional', 'לא חובה')} value={car.insuranceCompany ?? ''} onChangeText={(insuranceCompany) => set({ insuranceCompany })} />
 
-        <Label>Insurance valid until</Label>
+        <Label>{L('Insurance valid until', 'הביטוח בתוקף עד')}</Label>
         <Pressable style={s.dateField} onPress={() => setShowCalendar((v) => !v)}>
           <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
-          <Text style={s.dateText}>{car.insuranceExpires ? formatDate(car.insuranceExpires) + ' ' + new Date(car.insuranceExpires).getFullYear() : 'Not set'}</Text>
+          <Text style={s.dateText}>{car.insuranceExpires ? formatDate(car.insuranceExpires) + ' ' + new Date(car.insuranceExpires).getFullYear() : L('Not set', 'לא הוגדר')}</Text>
           <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
         </Pressable>
         {showCalendar && (
@@ -159,13 +173,13 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
 
         {error && <Banner tone="danger">{error}</Banner>}
 
-        {existing && (
+        {existing && canManage && (
           <Button
-            title="Delete car"
+            title={L('Delete car', 'מחיקת הרכב')}
             icon="trash-outline"
             variant="danger"
             onPress={async () => {
-              if (await confirm(`Delete ${existing.name}?`, 'All of its bookings will be deleted too.')) {
+              if (await confirm(L(`Delete ${existing.name}?`, `למחוק את ${existing.name}?`), L('All of its bookings will be deleted too.', 'גם כל ההזמנות שלו יימחקו.'))) {
                 run((st) => deleteCar(st, existing.id));
               }
             }}
@@ -173,9 +187,9 @@ export function CarEditor({ carId, onDone }: { carId?: string; onDone: () => voi
         )}
       </ScrollView>
       <View style={s.footer}>
-        <Button title="Cancel" variant="ghost" onPress={onDone} style={{ flex: 1 }} />
+        <Button title={L('Cancel', 'ביטול')} variant="ghost" onPress={onDone} style={{ flex: 1 }} />
         <Button
-          title="Save"
+          title={L('Save', 'שמירה')}
           icon="checkmark"
           onPress={() => run((st) => upsertCar(st, { ...car, name: car.name.trim() }))}
           style={{ flex: 2 }}

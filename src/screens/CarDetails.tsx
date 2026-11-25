@@ -4,16 +4,19 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BookingRow } from '../components/BookingRow';
 import { Avatar, Banner, Button, Card, Chip } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { bookingsForCar, carStatus, effectiveEnd, insuranceWarning, isInsured, needsApproval } from '../logic/bookings';
+import { bookingsForCar, carStatus, effectiveEnd, insuranceWarning, isInsured, needsApproval, isOwner, ownerNames, ownersOf } from '../logic/bookings';
 import { formatDate, formatDayLabel, formatDuration, formatTime } from '../logic/time';
 import { useSheets } from '../navigation';
-import { colors, space } from '../theme';
-import { FUEL_LABELS } from './BookingDetails';
+import { colors, onColor, space } from '../theme';
+import { fuelLabel } from './BookingDetails';
 import { timeAgo, useNow } from './HomeScreen';
+import { joinNames, whoLabel } from '../logic/labels';
+import { L, forwardIcon } from '../i18n';
 
 /** Everything about one car: status, where it is, owner, insurance, next bookings. */
 export function CarDetails({ carId, onClose }: { carId: string; onClose: () => void }) {
-  const { state, me } = useLoadedFamily();
+  const { state, me, canManage } = useLoadedFamily();
+  // The admin and the car's own owners can edit it.
   const sheets = useSheets();
   const now = useNow();
   const car = state.cars.find((c) => c.id === carId);
@@ -21,15 +24,16 @@ export function CarDetails({ carId, onClose }: { carId: string; onClose: () => v
   if (!car) {
     return (
       <View style={{ padding: space(5), gap: space(4) }}>
-        <Banner tone="info">This car was removed.</Banner>
-        <Button title="Close" variant="secondary" onPress={onClose} />
+        <Banner tone="info">{L('This car was removed.', 'הרכב הזה הוסר.')}</Banner>
+        <Button title={L('Close', 'סגירה')} variant="secondary" onPress={onClose} />
       </View>
     );
   }
 
   const status = carStatus(state, car.id, now);
-  const nameOf = (id: string) => (id === me.id ? 'You' : state.members.find((m) => m.id === id)?.name ?? 'Someone');
-  const owner = state.members.find((m) => m.id === car.ownerId);
+  const nameOf = (id: string) => (id === me.id ? L('You', 'אני') : state.members.find((m) => m.id === id)?.name ?? L('Someone', 'מישהו'));
+  const owners = ownersOf(car);
+  const ownersText = ownerNames(state, car);
   const insured = state.members.filter((m) => car.insuredMemberIds.includes(m.id));
   const warning = insuranceWarning(car, now);
   const upcoming = bookingsForCar(state, car.id).filter((b) => effectiveEnd(b) > now).slice(0, 5);
@@ -40,72 +44,86 @@ export function CarDetails({ carId, onClose }: { carId: string; onClose: () => v
   return (
     <View style={{ flex: 1 }}>
       <View style={s.topBar}>
-        <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Back" style={s.back}>
-          <Ionicons name="chevron-back" size={24} color={colors.primary} />
-          <Text style={s.backText}>Cars</Text>
+        <Pressable onPress={onClose} hitSlop={12} accessibilityLabel={L('Back', 'חזרה')} style={s.back}>
+          <Ionicons name={forwardIcon('chevron-back', 'chevron-forward')} size={24} color={colors.primary} />
+          <Text style={s.backText}>{L('Cars', 'רכבים')}</Text>
         </Pressable>
-        <Pressable onPress={() => sheets.editCar(car.id)} hitSlop={12} accessibilityLabel={`Edit ${car.name}`} style={s.back}>
-          <Ionicons name="create-outline" size={20} color={colors.primary} />
-          <Text style={s.backText}>Edit</Text>
-        </Pressable>
+        {(canManage || isOwner(car, me.id)) && (
+          <Pressable onPress={() => sheets.editCar(car.id)} hitSlop={12} accessibilityLabel={L(`Edit ${car.name}`, `עריכת ${car.name}`)} style={s.back}>
+            <Ionicons name="create-outline" size={20} color={colors.primary} />
+            <Text style={s.backText}>{L('Edit', 'עריכה')}</Text>
+          </Pressable>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.header}>
           <View style={[s.carIcon, { backgroundColor: car.color }]}>
-            <Ionicons name="car-sport" size={34} color="#fff" />
+            <Ionicons name="car-sport" size={34} color={onColor(car.color)} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>{car.name}</Text>
-            <Text style={s.muted}>{[car.model, car.plate, car.seats ? `${car.seats} seats` : null].filter(Boolean).join(' · ')}</Text>
+            <Text style={s.muted}>{[car.model, car.plate, car.seats ? L(`${car.seats} seats`, `${car.seats} מושבים`) : null].filter(Boolean).join(' · ')}</Text>
           </View>
         </View>
 
         {status.kind === 'in-use' ? (
           <Pressable onPress={() => sheets.showBooking(status.booking.id)}>
             <Banner tone="danger" icon="time-outline">
-              {`${nameOf(status.booking.memberId)} ${status.booking.memberId === me.id ? 'have' : 'has'} it until ${formatTime(effectiveEnd(status.booking))}`}
-              {status.booking.destination ? ` · going to ${status.booking.destination}` : ''}
+              {`${whoLabel(state, status.booking, me.id)} · ${L('until', 'עד')} ${formatTime(effectiveEnd(status.booking))}`}
+              {status.booking.destination ? L(` · going to ${status.booking.destination}`, ` · יעד: ${status.booking.destination}`) : ''}
             </Banner>
           </Pressable>
         ) : (
           <Banner tone="success" icon="checkmark-circle">
             {status.next
-              ? `Free for ${formatDuration(status.next.start - now)} · next: ${nameOf(status.next.memberId)} ${formatDayLabel(status.next.start, now).toLowerCase()} at ${formatTime(status.next.start)}`
-              : 'Free – no upcoming bookings'}
+              ? L(
+                  `Free for ${formatDuration(status.next.start - now)} · next: ${whoLabel(state, status.next, me.id)} ${formatDayLabel(status.next.start, now).toLowerCase()} at ${formatTime(status.next.start)}`,
+                  `פנוי עוד ${formatDuration(status.next.start - now)} · הבא: ${whoLabel(state, status.next, me.id)} ${formatDayLabel(status.next.start, now)} ב־${formatTime(status.next.start)}`,
+                )
+              : L('Free – no upcoming bookings', 'פנוי – אין הזמנות קרובות')}
           </Banner>
         )}
 
         <Card style={{ gap: space(3) }}>
-          <InfoRow icon="location-outline" label="Last seen">
+          <InfoRow icon="location-outline" label={L('Last seen', 'נראה לאחרונה')}>
             {report
-              ? `${report.parkedAt ?? 'Location not noted'}${report.fuel ? ` · Fuel ${FUEL_LABELS[report.fuel]}` : ''} — ${nameOf(report.memberId)}, ${timeAgo(report.at, now)}`
-              : 'No notes yet'}
+              ? `${report.parkedAt ?? L('Location not noted', 'לא צוין מיקום')}${report.fuel ? ` · ${L('Fuel', 'דלק')} ${fuelLabel(report.fuel)}` : ''} — ${nameOf(report.memberId)}, ${timeAgo(report.at, now)}`
+              : L('No notes yet', 'אין עדיין הערות')}
           </InfoRow>
-          {report?.note && <InfoRow icon="alert-circle-outline" label="Note">{`“${report.note}”`}</InfoRow>}
-          <InfoRow icon="key-outline" label="Owner">
-            {owner ? `${nameOf(owner.id)} – ${owner.id === me.id ? 'you approve' : 'approves'} other people's bookings` : 'No owner – anyone insured can book'}
+          {report?.note && <InfoRow icon="alert-circle-outline" label={L('Note', 'הערה')}>{`“${report.note}”`}</InfoRow>}
+          <InfoRow icon="key-outline" label={L('Owner', 'בעלים')}>
+            {owners.length === 0
+              ? L('No owner – anyone insured can book', 'אין בעלים – כל מי שיש לו ביטוח יכול להזמין')
+              : owners.length === 1
+                ? owners[0] === me.id
+                  ? L(`${nameOf(owners[0])} – you approve other people's bookings`, 'אני – מאשר/ת הזמנות של אחרים')
+                  : L(`${nameOf(owners[0])} – approves other people's bookings`, `${nameOf(owners[0])} – מאשר/ת הזמנות של אחרים`)
+                : L(
+                    `${joinNames(owners.map(nameOf))} – any of them can approve other people's bookings`,
+                    `${joinNames(owners.map(nameOf))} – כל אחד מהם יכול לאשר הזמנות של אחרים`,
+                  )}
           </InfoRow>
-          <InfoRow icon="shield-checkmark-outline" label="Insurance">
-            {[car.insuranceCompany, car.insuranceExpires ? `valid until ${formatDate(car.insuranceExpires)} ${new Date(car.insuranceExpires).getFullYear()}` : null]
+          <InfoRow icon="shield-checkmark-outline" label={L('Insurance', 'ביטוח')}>
+            {[car.insuranceCompany, car.insuranceExpires ? L(`valid until ${formatDate(car.insuranceExpires)} ${new Date(car.insuranceExpires).getFullYear()}`, `בתוקף עד ${formatDate(car.insuranceExpires)} ${new Date(car.insuranceExpires).getFullYear()}`) : null]
               .filter(Boolean)
-              .join(' · ') || 'Not set'}
+              .join(' · ') || L('Not set', 'לא הוגדר')}
           </InfoRow>
-          {warning && <Banner tone={warning.includes('expired') ? 'danger' : 'warning'}>{warning}</Banner>}
+          {warning && <Banner tone={(car.insuranceExpires ?? Infinity) < now ? 'danger' : 'warning'}>{warning}</Banner>}
           <View style={s.wrap}>
-            {insured.length === 0 && <Text style={s.muted}>No insured drivers yet.</Text>}
+            {insured.length === 0 && <Text style={s.muted}>{L('No insured drivers yet.', 'אין עדיין נהגים עם ביטוח.')}</Text>}
             {insured.map((m) => (
               <View key={m.id} style={s.driver}>
                 <Avatar member={m} size={22} />
-                <Text style={s.driverName}>{m.id === me.id ? 'You' : m.name}</Text>
+                <Text style={s.driverName}>{m.id === me.id ? L('You', 'אני') : m.name}</Text>
               </View>
             ))}
           </View>
         </Card>
 
-        <Text style={s.section}>Coming up</Text>
+        <Text style={s.section}>{L('Coming up', 'בקרוב')}</Text>
         {upcoming.length === 0 ? (
-          <Text style={s.muted}>Nothing booked.</Text>
+          <Text style={s.muted}>{L('Nothing booked.', 'אין הזמנות.')}</Text>
         ) : (
           <View style={{ gap: space(2) }}>
             {upcoming.map((b) => (
@@ -118,13 +136,13 @@ export function CarDetails({ carId, onClose }: { carId: string; onClose: () => v
       <View style={s.footer}>
         {canDrive ? (
           <Button
-            title={asks ? `Ask ${owner?.name} for ${car.name}` : `Book ${car.name}`}
+            title={asks ? L(`Ask ${ownersText} for ${car.name}`, `לבקש את ${car.name} מ${ownersText}`) : L(`Book ${car.name}`, `להזמין את ${car.name}`)}
             icon={asks ? 'paper-plane-outline' : 'calendar-outline'}
             onPress={() => sheets.newBooking({ carId: car.id })}
             style={{ flex: 1 }}
           />
         ) : (
-          <Chip label="You're not insured on this car" color={colors.muted} icon="lock-closed-outline" />
+          <Chip label={L('You\'re not insured on this car', 'אין לי ביטוח על הרכב הזה')} color={colors.muted} icon="lock-closed-outline" />
         )}
       </View>
     </View>

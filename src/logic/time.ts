@@ -1,4 +1,5 @@
 // Small, dependency-free date helpers. Everything works in the device's local time zone.
+import { L, getLanguage } from '../i18n';
 
 export const MINUTE = 60 * 1000;
 export const HOUR = 60 * MINUTE;
@@ -6,11 +7,21 @@ export const DAY = 24 * HOUR;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-export const MONTHS = [
+const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+const MONTHS_EN = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+const MONTHS_HE = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
+];
+
+/** Short weekday names in the current language, Sunday first. */
+export const weekdaysShort = () => (getLanguage() === 'he' ? WEEKDAYS_HE : WEEKDAYS_EN);
+/** Month names in the current language. */
+export const monthNames = () => (getLanguage() === 'he' ? MONTHS_HE : MONTHS_EN);
 
 export function startOfDay(t: number): number {
   const d = new Date(t);
@@ -79,13 +90,14 @@ export function formatTime(t: number): string {
 
 export function formatDate(t: number): string {
   const d = new Date(t);
-  return `${WEEKDAYS_SHORT[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+  if (getLanguage() === 'he') return `יום ${WEEKDAYS_HE[d.getDay()]}, ${d.getDate()} ב${MONTHS_HE[d.getMonth()]}`;
+  return `${WEEKDAYS_EN[d.getDay()]}, ${d.getDate()} ${MONTHS_EN[d.getMonth()].slice(0, 3)}`;
 }
 
 export function formatDayLabel(t: number, now = Date.now()): string {
-  if (isSameDay(t, now)) return 'Today';
-  if (isSameDay(t, addDays(now, 1))) return 'Tomorrow';
-  if (isSameDay(t, addDays(now, -1))) return 'Yesterday';
+  if (isSameDay(t, now)) return L('Today', 'היום');
+  if (isSameDay(t, addDays(now, 1))) return L('Tomorrow', 'מחר');
+  if (isSameDay(t, addDays(now, -1))) return L('Yesterday', 'אתמול');
   return formatDate(t);
 }
 
@@ -102,8 +114,8 @@ export function formatDuration(ms: number): string {
   const hours = Math.floor((totalMin % (24 * 60)) / 60);
   const mins = totalMin % 60;
   const parts: string[] = [];
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (mins || parts.length === 0) parts.push(`${mins}m`);
+  if (days) parts.push(L(`${days}d`, `${days} ימים`));
+  if (hours) parts.push(L(`${hours}h`, `${hours} ש׳`));
+  if (mins || parts.length === 0) parts.push(L(`${mins}m`, `${mins} דק׳`));
   return parts.join(' ');
 }

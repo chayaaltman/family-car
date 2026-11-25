@@ -3,29 +3,35 @@ import React, { useState } from 'react';
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Avatar, Banner, Button, Chip, Field, Label } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { cancelBooking, effectiveEnd, isConfirmed, returnCar, statusOf } from '../logic/bookings';
+import { cancelBooking, effectiveEnd, isConfirmed, returnCar, statusOf, isOwner, ownerNames, ownersOf } from '../logic/bookings';
+import { releasePickup } from '../logic/pickups';
 import { RequestActions } from '../components/RequestCard';
 import { askAboutBookingMessage, requestMessage } from '../logic/messages';
 import { useSheets } from '../navigation';
 import { formatDuration, formatRange } from '../logic/time';
 import { colors, space } from '../theme';
 import type { FuelLevel } from '../types';
+import { L } from '../i18n';
 
-export const FUEL_LABELS: Record<FuelLevel, string> = {
-  empty: 'Empty',
-  quarter: '¼',
-  half: '½',
-  'three-quarters': '¾',
-  full: 'Full',
-};
+/** Fuel levels for the "I'm back" note, in the current language. */
+export function fuelLabel(f: FuelLevel): string {
+  return {
+    empty: L('Empty', 'ריק'),
+    quarter: '¼',
+    half: '½',
+    'three-quarters': '¾',
+    full: L('Full', 'מלא'),
+  }[f];
+}
+export const FUEL_LEVELS: FuelLevel[] = ['empty', 'quarter', 'half', 'three-quarters', 'full'];
 
 /** Cross-platform "are you sure?" (Alert.alert has no buttons on web). */
 export function confirm(title: string, message: string): Promise<boolean> {
   if (Platform.OS === 'web') return Promise.resolve(window.confirm(`${title}\n\n${message}`));
   return new Promise((resolve) =>
     Alert.alert(title, message, [
-      { text: 'No', style: 'cancel', onPress: () => resolve(false) },
-      { text: 'Yes', style: 'destructive', onPress: () => resolve(true) },
+      { text: L('No', 'לא'), style: 'cancel', onPress: () => resolve(false) },
+      { text: L('Yes', 'כן'), style: 'destructive', onPress: () => resolve(true) },
     ]),
   );
 }
@@ -51,8 +57,8 @@ export function BookingDetails({
   if (!booking) {
     return (
       <View style={s.content}>
-        <Banner tone="info">This booking was cancelled.</Banner>
-        <Button title="Close" variant="secondary" onPress={onClose} />
+        <Banner tone="info">{L('This booking was cancelled.', 'ההזמנה הזאת בוטלה.')}</Banner>
+        <Button title={L('Close', 'סגירה')} variant="secondary" onPress={onClose} />
       </View>
     );
   }
@@ -64,9 +70,15 @@ export function BookingDetails({
   const status = statusOf(booking);
   const active = isConfirmed(booking) && booking.start <= now && now < end;
   const past = end <= now;
-  const owner = state.members.find((m) => m.id === car?.ownerId);
+  const owners = car ? ownerNames(state, car) : '';
   const decider = state.members.find((m) => m.id === booking.decidedBy);
-  const iAmOwner = !!car && car.ownerId === me.id;
+  const iAmOwner = !!car && isOwner(car, me.id);
+
+  // Pick-ups: `member` is the person who needs a ride; the driver is whoever said yes.
+  const pickup = booking.pickup;
+  const driver = state.members.find((m) => m.id === pickup?.driverId);
+  const isDriver = !!pickup && pickup.driverId === me.id;
+  const drivesIt = pickup ? isDriver : mine;
 
   const run = async (fn: Parameters<typeof act>[0]) => {
     try {
@@ -78,12 +90,19 @@ export function BookingDetails({
   };
 
   const remindOwner = () =>
-    owner && sheets.message({ to: owner.id, title: `Remind ${owner.name}`, text: requestMessage(state, booking) });
+    car &&
+    owners &&
+    sheets.message({
+      to: ownersOf(car),
+      title: L(`Remind ${owners}`, `תזכורת ל${owners}`),
+      text: requestMessage(state, booking),
+      textFor: (names) => requestMessage(state, booking, names),
+    });
 
   const askForCar = () =>
     sheets.message({
       to: booking.memberId,
-      title: `Message ${member?.name ?? ''}`,
+      title: L(`Message ${member?.name ?? ''}`, `הודעה ל${member?.name ?? ''}`),
       text: askAboutBookingMessage(state, booking, me.name),
     });
 
@@ -92,36 +111,87 @@ export function BookingDetails({
       <View style={s.header}>
         <Ionicons name="car-sport" size={34} color={car?.color ?? colors.muted} />
         <View style={{ flex: 1 }}>
-          <Text style={s.title}>{car?.name ?? 'Deleted car'}</Text>
+          <Text style={s.title}>{car?.name ?? L('Deleted car', 'רכב שנמחק')}</Text>
           <Text style={s.subtitle}>{formatRange(booking.start, end)}</Text>
         </View>
-        {active && <Chip label="Now" color={colors.success} selected />}
+        {active && <Chip label={L('Now', 'עכשיו')} color={colors.success} selected />}
       </View>
 
       {status === 'pending' && (
         <Banner tone="warning" icon="time-outline">
           {iAmOwner
-            ? `${member?.name} is asking for your ${car?.name}. It goes on the calendar only if you approve.`
-            : `Waiting for ${owner?.name ?? 'the owner'} to approve. It's not on the calendar yet.`}
+            ? pickup
+              ? L(
+                  `${driver?.name ?? 'Someone'} wants it to pick up ${member?.name}. It goes on the calendar only if you approve.`,
+                  `${driver?.name ?? 'מישהו'} מבקש/ת את הרכב כדי לאסוף את ${member?.name}. זה ייכנס ליומן רק אחרי אישור.`,
+                )
+              : L(
+                  `${member?.name} is asking for your ${car?.name}. It goes on the calendar only if you approve.`,
+                  `${member?.name} מבקש/ת את ${car?.name}. זה ייכנס ליומן רק אחרי אישור.`,
+                )
+            : L(
+                `Waiting for ${owners || 'the owner'} to approve. It's not on the calendar yet.`,
+                `מחכה לאישור של ${owners || 'הבעלים'}. עדיין לא ביומן.`,
+              )}
         </Banner>
       )}
       {status === 'declined' && (
         <Banner tone="danger">
-          {`Declined by ${decider?.name ?? 'the owner'}`}
+          {L(`Declined by ${decider?.name ?? 'the owner'}`, `נדחה על ידי ${decider?.name ?? 'הבעלים'}`)}
           {booking.declineReason ? `: “${booking.declineReason}”` : '.'}
         </Banner>
       )}
       {status === 'approved' && booking.decidedBy && (
-        <Banner tone="success">{`Approved by ${decider?.name ?? 'the owner'}`}</Banner>
+        <Banner tone="success">{L(`Approved by ${decider?.name ?? 'the owner'}`, `אושר על ידי ${decider?.name ?? 'הבעלים'}`)}</Banner>
+      )}
+      {pickup && status !== 'declined' && (
+        driver ? (
+          <Banner tone="success" icon="car-outline">
+            {isDriver
+              ? L(`You are picking ${mine ? 'you' : member?.name ?? 'them'} up.`, `אני אוסף/ת את ${member?.name ?? ''}.`)
+              : L(
+                  `${driver.name} is picking ${mine ? 'you' : member?.name ?? 'them'} up.`,
+                  mine ? `${driver.name} בדרך לאסוף אותי.` : `${driver.name} בדרך לאסוף את ${member?.name ?? ''}.`,
+                )}
+          </Banner>
+        ) : (
+          <Banner tone="info" icon="hand-left-outline">
+            {L('No driver yet.', 'עדיין אין נהג/ת.')}
+          </Banner>
+        )
       )}
 
       <View style={s.row}>
         {member && <Avatar member={member} size={40} />}
         <View>
-          <Text style={s.name}>{mine ? `${member?.name} (you)` : member?.name}</Text>
-          <Text style={s.muted}>{formatDuration(end - booking.start)}{booking.returnedAt ? ' · returned early' : ''}</Text>
+          <Text style={s.name}>
+            {pickup
+              ? mine
+                ? L('You need a ride', 'אני צריך/ה הסעה')
+                : L(`${member?.name} needs a ride`, `${member?.name} צריך/ה הסעה`)
+              : mine
+                ? L(`${member?.name} (you)`, `${member?.name} (אני)`)
+                : member?.name}
+          </Text>
+          <Text style={s.muted}>{formatDuration(end - booking.start)}{booking.returnedAt ? L(' · returned early', ' · הוחזר מוקדם') : ''}</Text>
         </View>
       </View>
+
+      {pickup && (
+        <View style={s.row}>
+          <Ionicons name="hand-left-outline" size={20} color={colors.muted} />
+          <Text style={[s.body, { fontWeight: '600' }]}>Pick up from {pickup.place}</Text>
+          {isDriver && (
+            <Button
+              small
+              variant="secondary"
+              icon="navigate-outline"
+              title={'Waze'}
+              onPress={() => Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(pickup.place)}&navigate=yes`)}
+            />
+          )}
+        </View>
+      )}
 
       {booking.destination && (
         <View style={s.row}>
@@ -131,7 +201,7 @@ export function BookingDetails({
             small
             variant="secondary"
             icon="navigate-outline"
-            title="Waze"
+            title={'Waze'}
             onPress={() => Linking.openURL(`https://waze.com/ul?q=${encodeURIComponent(booking.destination!)}&navigate=yes`)}
           />
         </View>
@@ -148,17 +218,17 @@ export function BookingDetails({
 
       {returning ? (
         <View style={{ gap: space(4) }}>
-          <Text style={s.section}>Leave a note for the next driver</Text>
-          <Field label="Where did you park?" placeholder="Driveway, street, mall parking level 2…" value={parkedAt} onChangeText={setParkedAt} />
-          <Label>Fuel left</Label>
+          <Text style={s.section}>{L('Leave a note for the next driver', 'הערה לנהג/ת הבא/ה')}</Text>
+          <Field label={L('Where did you park?', 'איפה הרכב חונה?')} placeholder={L('Driveway, street, mall parking level 2…', 'בחנייה, ברחוב, בחניון הקניון קומה 2…')} value={parkedAt} onChangeText={setParkedAt} />
+          <Label>{L('Fuel left', 'כמה דלק נשאר')}</Label>
           <View style={s.wrap}>
-            {(Object.keys(FUEL_LABELS) as FuelLevel[]).map((f) => (
-              <Chip key={f} label={FUEL_LABELS[f]} selected={fuel === f} onPress={() => setFuel(f)} icon="speedometer-outline" />
+            {FUEL_LEVELS.map((f) => (
+              <Chip key={f} label={fuelLabel(f)} selected={fuel === f} onPress={() => setFuel(f)} icon="speedometer-outline" />
             ))}
           </View>
-          <Field label="Anything else?" placeholder="Needs a wash, warning light…" value={note} onChangeText={setNote} />
+          <Field label={L('Anything else?', 'עוד משהו?')} placeholder={L('Needs a wash, warning light…', 'צריך שטיפה, נורת אזהרה…')} value={note} onChangeText={setNote} />
           <Button
-            title="Return car"
+            title={L('Return car', 'החזרת הרכב')}
             icon="key-outline"
             onPress={() =>
               run((st) =>
@@ -170,18 +240,30 @@ export function BookingDetails({
               )
             }
           />
-          <Button title="Back" variant="ghost" onPress={() => setReturning(false)} />
+          <Button title={L('Back', 'חזרה')} variant="ghost" onPress={() => setReturning(false)} />
         </View>
       ) : (
         <View style={{ gap: space(3), marginTop: space(2) }}>
           {iAmOwner && status === 'pending' && !past && <RequestActions booking={booking} />}
-          {mine && status === 'pending' && !iAmOwner && !past && (
-            <Button title={`Remind ${owner?.name ?? 'the owner'}`} icon="logo-whatsapp" variant="secondary" onPress={remindOwner} />
+          {drivesIt && status === 'pending' && !iAmOwner && !past && (
+            <Button title={L(`Remind ${owners || 'the owner'}`, `תזכורת ל${owners || 'בעלים'}`)} icon="logo-whatsapp" variant="secondary" onPress={remindOwner} />
           )}
-          {mine && active && <Button title="I'm back – return the car" icon="key-outline" onPress={() => setReturning(true)} />}
-          {mine && !past && (
+          {isDriver && !past && (
             <Button
-              title={status === 'declined' ? 'Change it & ask again' : 'Edit time or car'}
+              title={L('I can\'t make it anymore', 'לא אוכל להגיע')}
+              icon="close-outline"
+              variant="secondary"
+              onPress={async () => {
+                if (await confirm(L('Can\'t make it?', 'לא מסתדר?'), L(`The ${car?.name ?? 'car'} is freed and the request goes back to everyone who can drive.`, `${car?.name ?? 'הרכב'} מתפנה והבקשה חוזרת לכל מי שיכול לנהוג.`))) {
+                  run((st) => releasePickup(st, booking.id, me.id));
+                }
+              }}
+            />
+          )}
+          {drivesIt && active && <Button title={L('I\'m back – return the car', 'חזרתי – החזרת הרכב')} icon="key-outline" onPress={() => setReturning(true)} />}
+          {mine && !pickup && !past && (
+            <Button
+              title={status === 'declined' ? L('Change it & ask again', 'לשנות ולבקש שוב') : L('Edit time or car', 'עריכת זמן או רכב')}
               icon="create-outline"
               variant="secondary"
               onPress={onEdit}
@@ -189,20 +271,20 @@ export function BookingDetails({
           )}
           {mine && !past && (
             <Button
-              title={status === 'approved' ? 'Cancel booking' : status === 'pending' ? 'Cancel request' : 'Remove'}
+              title={status === 'approved' ? L('Cancel booking', 'ביטול ההזמנה') : status === 'pending' ? L('Cancel request', 'ביטול הבקשה') : L('Remove', 'הסרה')}
               icon="trash-outline"
               variant="danger"
               onPress={async () => {
-                if (status === 'declined' || (await confirm('Cancel?', status === 'pending' ? 'Your request will be withdrawn.' : `${car?.name} will be free for others.`))) {
+                if (status === 'declined' || (await confirm(L('Cancel?', 'לבטל?'), status === 'pending' ? L('Your request will be withdrawn.', 'הבקשה תבוטל.') : L(`${car?.name} will be free for others.`, `${car?.name} יתפנה לאחרים.`)))) {
                   run((st) => cancelBooking(st, booking.id));
                 }
               }}
             />
           )}
-          {!mine && !past && status === 'approved' && (
-            <Button title={`Message ${member?.name ?? 'them'} about it`} icon="logo-whatsapp" variant="secondary" onPress={askForCar} />
+          {!mine && !pickup && !past && status === 'approved' && (
+            <Button title={L(`Message ${member?.name ?? 'them'} about it`, `הודעה ל${member?.name ?? ''} על זה`)} icon="logo-whatsapp" variant="secondary" onPress={askForCar} />
           )}
-          <Button title="Close" variant="ghost" onPress={onClose} />
+          <Button title={L('Close', 'סגירה')} variant="ghost" onPress={onClose} />
         </View>
       )}
     </ScrollView>

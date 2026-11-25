@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -11,8 +12,9 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { colors, onColor, radius, shadow, space, tint } from '../theme';
+import { brand, colors, deepen, onColor, radius, shadow, space, tint } from '../theme';
 import type { Member } from '../types';
+import { forwardIcon } from '../i18n';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -20,7 +22,7 @@ export function Card({ children, style }: { children: React.ReactNode; style?: S
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'brand' | 'brandSoft';
 
 export function Button({
   title,
@@ -42,10 +44,12 @@ export function Button({
   small?: boolean;
 }) {
   const palette = {
-    primary: { bg: colors.primary, fg: '#fff' },
+    primary: { bg: brand.navy, fg: '#fff' },
     secondary: { bg: colors.primarySoft, fg: colors.primary },
     danger: { bg: colors.dangerSoft, fg: colors.danger },
     ghost: { bg: 'transparent', fg: colors.muted },
+    brand: { bg: brand.navy, fg: '#fff' },
+    brandSoft: { bg: brand.soft, fg: brand.ink },
   }[variant];
   return (
     <Pressable
@@ -56,9 +60,14 @@ export function Button({
         styles.button,
         small && styles.buttonSmall,
         { backgroundColor: palette.bg, opacity: disabled ? 0.45 : pressed ? 0.8 : 1 },
+        (variant === 'brand' || variant === 'primary') && { overflow: 'hidden' },
         style,
       ]}
     >
+      {(variant === 'brand' || variant === 'primary') && (
+        // Same teal-to-deep-blue fade as the app icon.
+        <LinearGradient colors={[brand.teal, brand.navy]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      )}
       {loading ? (
         <ActivityIndicator color={palette.fg} />
       ) : (
@@ -112,8 +121,8 @@ export function Chip({
           : { backgroundColor: tint(color, 0.88), borderColor: tint(color, 0.88) },
       ]}
     >
-      {icon && <Ionicons name={icon} size={14} color={selected ? onColor(color) : color} />}
-      <Text style={[styles.chipText, { color: selected ? onColor(color) : color }]}>{label}</Text>
+      {icon && <Ionicons name={icon} size={14} color={selected ? onColor(color) : deepen(color, 0.25)} />}
+      <Text style={[styles.chipText, { color: selected ? onColor(color) : deepen(color, 0.25) }]}>{label}</Text>
     </View>
   );
   if (!onPress) return content;
@@ -209,12 +218,14 @@ export function ListRow({
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   right?: React.ReactNode;
-  onPress: () => void;
+  /** Leave out to show a read-only row (no chevron, not tappable). */
+  onPress?: () => void;
   accessibilityLabel?: string;
 }) {
   return (
     <Pressable
-      accessibilityRole="button"
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={({ pressed }) => [styles.listRow, pressed && { opacity: 0.7 }]}
@@ -231,7 +242,7 @@ export function ListRow({
         ) : null}
       </View>
       {right}
-      <Ionicons name="chevron-forward" size={18} color={colors.faint} />
+      {onPress && <Ionicons name={forwardIcon('chevron-forward', 'chevron-back')} size={18} color={colors.faint} />}
     </Pressable>
   );
 }
@@ -312,7 +323,7 @@ export const styles = StyleSheet.create({
     paddingVertical: space(2),
     borderRadius: radius.sm + 1,
   },
-  segmentOn: { backgroundColor: colors.card, ...shadow },
+  segmentOn: { backgroundColor: colors.raised, ...shadow },
   segmentText: { fontSize: 14, fontWeight: '700', color: colors.muted },
   segmentBadge: {
     minWidth: 18,

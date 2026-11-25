@@ -1,21 +1,24 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BookingRow } from '../components/BookingRow';
+import { MyPickupCard, PickupCard } from '../components/PickupCard';
 import { RequestCard } from '../components/RequestCard';
+import { myPickupRequests, openPickupsFor } from '../logic/pickups';
 import { Card, Chip, EmptyState, Segmented, SectionTitle } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { effectiveEnd, requestsFor, statusOf } from '../logic/bookings';
+import { effectiveEnd, requestsFor, statusOf, involves } from '../logic/bookings';
 import { formatDayLabel, startOfDay } from '../logic/time';
 import { useSheets } from '../navigation';
 import { colors, space } from '../theme';
 import type { Booking } from '../types';
 import { useNow } from './HomeScreen';
+import { L } from '../i18n';
 
 export type BookingsSection = 'upcoming' | 'requests' | 'history';
 
 /**
  * Upcoming – approved bookings by day (everyone or just me).
- * Requests – ones waiting for your OK, plus your own pending/declined requests.
+ * Requests – ones waiting for your OK, pick-ups you could do, plus your own requests and pick-up requests.
  * History  – past bookings.
  */
 export function BookingsScreen({
@@ -31,11 +34,13 @@ export function BookingsScreen({
   const [who, setWho] = useState<'everyone' | 'me'>('everyone');
 
   const toApprove = requestsFor(state, me.id, now);
+  const pickupsToTake = openPickupsFor(state, me.id, now);
+  const myPickups = myPickupRequests(state, me.id, now);
   const myRequests = state.bookings
-    .filter((b) => b.memberId === me.id && statusOf(b) !== 'approved' && b.end > now)
+    .filter((b) => involves(b, me.id) && statusOf(b) !== 'approved' && b.end > now)
     .sort((a, b) => a.start - b.start);
 
-  const approved = state.bookings.filter((b) => statusOf(b) === 'approved' && (who === 'everyone' || b.memberId === me.id));
+  const approved = state.bookings.filter((b) => statusOf(b) === 'approved' && (who === 'everyone' || involves(b, me.id)));
   const upcoming = approved.filter((b) => effectiveEnd(b) > now).sort((a, b) => a.start - b.start);
   const past = approved
     .filter((b) => effectiveEnd(b) <= now)
@@ -56,20 +61,20 @@ export function BookingsScreen({
   return (
     <View style={{ flex: 1 }}>
       <View style={s.header}>
-        <Text style={s.title}>Bookings</Text>
+        <Text style={s.title}>{L('Bookings', 'הזמנות')}</Text>
         <Segmented
           value={section}
           onChange={onSection}
           options={[
-            { key: 'upcoming', label: 'Upcoming' },
-            { key: 'requests', label: 'Requests', badge: toApprove.length },
-            { key: 'history', label: 'History' },
+            { key: 'upcoming', label: L('Upcoming', 'קרובות') },
+            { key: 'requests', label: L('Requests', 'בקשות'), badge: toApprove.length + pickupsToTake.length },
+            { key: 'history', label: L('History', 'היסטוריה') },
           ]}
         />
         {section !== 'requests' && (
           <View style={s.filters}>
-            <Chip label="Everyone" icon="people-outline" selected={who === 'everyone'} onPress={() => setWho('everyone')} />
-            <Chip label="Just me" icon="person-outline" selected={who === 'me'} onPress={() => setWho('me')} />
+            <Chip label={L('Everyone', 'כולם')} icon="people-outline" selected={who === 'everyone'} onPress={() => setWho('everyone')} />
+            <Chip label={L('Just me', 'רק אני')} icon="person-outline" selected={who === 'me'} onPress={() => setWho('me')} />
           </View>
         )}
       </View>
@@ -78,7 +83,7 @@ export function BookingsScreen({
         {section === 'upcoming' &&
           (upcoming.length === 0 ? (
             <Card>
-              <EmptyState icon="calendar-clear-outline" title="No upcoming bookings" text="Tap + to book a car." />
+              <EmptyState icon="calendar-clear-outline" title={L('No upcoming bookings', 'אין הזמנות קרובות')} text={L('Tap + to book a car.', 'לוחצים על + כדי להזמין רכב.')} />
             </Card>
           ) : (
             [...groups.entries()].map(([day, list]) => (
@@ -93,7 +98,7 @@ export function BookingsScreen({
           <>
             {toApprove.length > 0 && (
               <View>
-                <SectionTitle>Waiting for your OK</SectionTitle>
+                <SectionTitle>{L('Waiting for your OK', 'מחכות לאישור שלי')}</SectionTitle>
                 <View style={{ gap: space(3) }}>
                   {toApprove.map((b) => (
                     <RequestCard key={b.id} booking={b} onOpen={() => sheets.showBooking(b.id)} />
@@ -101,18 +106,38 @@ export function BookingsScreen({
                 </View>
               </View>
             )}
+            {pickupsToTake.length > 0 && (
+              <View>
+                <SectionTitle>{L('Can you pick someone up?', 'אפשר לאסוף מישהו?')}</SectionTitle>
+                <View style={{ gap: space(3) }}>
+                  {pickupsToTake.map((r) => (
+                    <PickupCard key={r.id} requestId={r.id} />
+                  ))}
+                </View>
+              </View>
+            )}
+            {myPickups.length > 0 && (
+              <View>
+                <SectionTitle>{L('Your pick-up requests', 'בקשות האיסוף שלי')}</SectionTitle>
+                <View style={{ gap: space(3) }}>
+                  {myPickups.map((r) => (
+                    <MyPickupCard key={r.id} requestId={r.id} />
+                  ))}
+                </View>
+              </View>
+            )}
             {myRequests.length > 0 && (
               <View>
-                <SectionTitle>Your requests</SectionTitle>
+                <SectionTitle>{L('Your requests', 'הבקשות שלי')}</SectionTitle>
                 <View style={{ gap: space(2) }}>{myRequests.map(row)}</View>
               </View>
             )}
-            {toApprove.length === 0 && myRequests.length === 0 && (
+            {toApprove.length === 0 && myRequests.length === 0 && pickupsToTake.length === 0 && myPickups.length === 0 && (
               <Card style={{ marginTop: space(4) }}>
                 <EmptyState
                   icon="checkmark-done-outline"
-                  title="No requests"
-                  text="When someone asks for a car you own, or you ask for someone else's, it shows up here."
+                  title={L('No requests', 'אין בקשות')}
+                  text={L('Car requests and pick-up requests show up here.', 'בקשות לרכב ובקשות איסוף יופיעו כאן.')}
                 />
               </Card>
             )}
@@ -122,7 +147,7 @@ export function BookingsScreen({
         {section === 'history' &&
           (past.length === 0 ? (
             <Card style={{ marginTop: space(4) }}>
-              <EmptyState icon="time-outline" title="No past bookings yet" />
+              <EmptyState icon="time-outline" title={L('No past bookings yet', 'אין עדיין הזמנות קודמות')} />
             </Card>
           ) : (
             <View style={{ gap: space(2), marginTop: space(2) }}>{past.map(row)}</View>

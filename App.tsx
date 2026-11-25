@@ -1,28 +1,38 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Banner, Button, type IconName } from './src/components/ui';
 import { FamilyProvider, useFamily, useLoadedFamily } from './src/data/FamilyContext';
+import { PreferencesProvider } from './src/data/preferences';
+import { startAutoUpdate } from './src/logic/autoUpdate';
 import { requestsFor } from './src/logic/bookings';
+import { openPickupsFor } from './src/logic/pickups';
 import { SheetProvider, useSheets } from './src/navigation';
 import { BookingsScreen, type BookingsSection } from './src/screens/BookingsScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
 import { FamilyScreen } from './src/screens/FamilyScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { WelcomeScreen, WhoAreYouScreen } from './src/screens/Onboarding';
+import { SettingsButton } from './src/screens/SettingsScreen';
 import { colors, shadow, space } from './src/theme';
+import { L } from './src/i18n';
 
 export default function App() {
+  // Pick up new versions of the web app as soon as they're published.
+  useEffect(() => startAutoUpdate(), []);
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      <FamilyProvider>
-        <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
-          <Root />
-        </SafeAreaView>
-      </FamilyProvider>
+      <PreferencesProvider>
+        <FamilyProvider>
+          <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <Root />
+            <SettingsButton />
+          </SafeAreaView>
+        </FamilyProvider>
+      </PreferencesProvider>
     </SafeAreaProvider>
   );
 }
@@ -42,7 +52,7 @@ function Root() {
     return (
       <View style={[styles.center, { padding: space(6), gap: space(4) }]}>
         <Banner tone="danger">{error}</Banner>
-        <Button title="Back to start" variant="secondary" onPress={leaveFamily} />
+        <Button title={L('Back to start', 'חזרה להתחלה')} variant="secondary" onPress={leaveFamily} />
       </View>
     );
   }
@@ -55,11 +65,12 @@ function Root() {
 }
 
 type Tab = 'home' | 'calendar' | 'bookings' | 'family';
-const TABS: { key: Tab; label: string; icon: IconName; iconActive: IconName }[] = [
-  { key: 'home', label: 'Cars', icon: 'car-sport-outline', iconActive: 'car-sport' },
-  { key: 'calendar', label: 'Calendar', icon: 'calendar-outline', iconActive: 'calendar' },
-  { key: 'bookings', label: 'Bookings', icon: 'list-outline', iconActive: 'list' },
-  { key: 'family', label: 'Family', icon: 'people-outline', iconActive: 'people' },
+// `label` is a function so it's read in the current language each render.
+const TABS: { key: Tab; label: () => string; icon: IconName; iconActive: IconName }[] = [
+  { key: 'home', label: () => L('Cars', 'רכבים'), icon: 'car-sport-outline', iconActive: 'car-sport' },
+  { key: 'calendar', label: () => L('Calendar', 'יומן'), icon: 'calendar-outline', iconActive: 'calendar' },
+  { key: 'bookings', label: () => L('Bookings', 'הזמנות'), icon: 'list-outline', iconActive: 'list' },
+  { key: 'family', label: () => L('Family', 'משפחה'), icon: 'people-outline', iconActive: 'people' },
 ];
 
 function MainTabs() {
@@ -67,7 +78,7 @@ function MainTabs() {
   const [bookingsSection, setBookingsSection] = useState<BookingsSection>('upcoming');
   const sheets = useSheets();
   const { state, me } = useLoadedFamily();
-  const waiting = requestsFor(state, me.id).length;
+  const waiting = requestsFor(state, me.id).length + openPickupsFor(state, me.id).length;
 
   return (
     <View style={{ flex: 1 }}>
@@ -90,7 +101,7 @@ function MainTabs() {
           {TABS.slice(0, 2).map((t) => (
             <TabButton key={t.key} tab={t} active={tab === t.key} onPress={() => setTab(t.key)} />
           ))}
-          <Pressable accessibilityRole="button" accessibilityLabel="Book a car" onPress={() => sheets.newBooking()} style={styles.fab}>
+          <Pressable accessibilityRole="button" accessibilityLabel={L('Book a car', 'הזמנת רכב')} onPress={() => sheets.newBooking()} style={styles.fab}>
             <Ionicons name="add" size={32} color="#fff" />
           </Pressable>
           {TABS.slice(2).map((t) => (
@@ -123,7 +134,7 @@ function TabButton({
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={badge ? `${tab.label}, ${badge} waiting for your approval` : tab.label}
+      accessibilityLabel={badge ? L(`${tab.label()}, ${badge} waiting for you`, `${tab.label()}, ${badge} מחכות לך`) : tab.label()}
       onPress={onPress}
       style={styles.tab}
     >
@@ -135,7 +146,7 @@ function TabButton({
           </View>
         )}
       </View>
-      <Text style={[styles.tabLabel, { color: active ? colors.primary : colors.faint }]}>{tab.label}</Text>
+      <Text style={[styles.tabLabel, { color: active ? colors.primary : colors.faint }]}>{tab.label()}</Text>
     </Pressable>
   );
 }

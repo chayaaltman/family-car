@@ -2,6 +2,7 @@ import { initializeApp, getApps } from 'firebase/app';
 import { doc, getDoc, getFirestore, onSnapshot, runTransaction, type Firestore } from 'firebase/firestore';
 import type { FamilyState } from '../types';
 import type { FamilyStore, Mutation } from './store';
+import { L } from '../i18n';
 
 const config = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -44,7 +45,7 @@ export class FirebaseStore implements FamilyStore {
       this.ref(),
       (snap) => {
         if (snap.exists()) listener(snap.data() as FamilyState);
-        else onError?.(new Error(`No family found with code ${this.familyCode}.`));
+        else onError?.(new Error(L(`No family found with code ${this.familyCode}.`, `לא נמצאה משפחה עם הקוד ${this.familyCode}.`)));
       },
       (e) => onError?.(e),
     );
@@ -53,7 +54,7 @@ export class FirebaseStore implements FamilyStore {
   async update(mutation: Mutation): Promise<void> {
     await runTransaction(firestore(), async (tx) => {
       const snap = await tx.get(this.ref());
-      if (!snap.exists()) throw new Error('This family no longer exists.');
+      if (!snap.exists()) throw new Error(L('This family no longer exists.', 'המשפחה הזאת כבר לא קיימת.'));
       const next = { ...mutation(snap.data() as FamilyState), updatedAt: Date.now() };
       tx.set(this.ref(), stripUndefined(next));
     });
@@ -66,7 +67,7 @@ export class FirebaseStore implements FamilyStore {
   static async create(code: string, state: FamilyState): Promise<void> {
     await runTransaction(firestore(), async (tx) => {
       const ref = doc(firestore(), 'families', code);
-      if ((await tx.get(ref)).exists()) throw new Error('That code is taken, try again.');
+      if ((await tx.get(ref)).exists()) throw new Error(L('That code is taken, try again.', 'הקוד הזה תפוס, נסו שוב.'));
       tx.set(ref, stripUndefined(state));
     });
   }

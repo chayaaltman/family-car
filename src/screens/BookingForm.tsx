@@ -2,26 +2,32 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DateTimeField } from '../components/DateTimeField';
-import { Avatar, Banner, Button, Chip, Field, Label } from '../components/ui';
+import { Avatar, Banner, Button, Chip, Field, Label, Segmented } from '../components/ui';
 import { useLoadedFamily } from '../data/FamilyContext';
-import { RuleError, isConfirmed, isInsured, needsApproval, saveBooking, validateBooking } from '../logic/bookings';
+import { RuleError, isConfirmed, isInsured, needsApproval, newId, possibleDrivers, saveBooking, validateBooking, ownerNames, ownersOf } from '../logic/bookings';
+import { joinNames } from '../logic/labels';
+import { createPickupRequest, driversFor, isCarFree, validatePickupRequest } from '../logic/pickups';
 import { HOUR, MINUTE, endOfDay, formatDuration, formatRange, roundUpToMinutes } from '../logic/time';
-import { colors, radius, space, tint } from '../theme';
-import { requestMessage } from '../logic/messages';
+import { colors, deepen, radius, space, tint } from '../theme';
+import { pickupRequestMessage, requestMessage } from '../logic/messages';
 import { useSheets } from '../navigation';
+import { L } from '../i18n';
 
 export interface BookingFormInit {
   bookingId?: string;
   carId?: string;
   start?: number;
+  /** Open in L('Pick me up', 'שיאספו אותי') mode. */
+  pickup?: boolean;
 }
 
+// Quick lengths; labels come from formatDuration so they follow the language ("1h" / "1 ש׳").
 const QUICK_DURATIONS = [
-  { label: '30m', ms: 30 * MINUTE },
-  { label: '1h', ms: HOUR },
-  { label: '2h', ms: 2 * HOUR },
-  { label: '3h', ms: 3 * HOUR },
-  { label: '5h', ms: 5 * HOUR },
+  { ms: 30 * MINUTE },
+  { ms: HOUR },
+  { ms: 2 * HOUR },
+  { ms: 3 * HOUR },
+  { ms: 5 * HOUR },
 ];
 
 export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: () => void }) {
@@ -40,6 +46,13 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
   const [end, setEnd] = useState(existing?.end ?? start + HOUR);
   const [purpose, setPurpose] = useState(existing?.purpose ?? '');
   const [destination, setDestination] = useState(existing?.destination ?? '');
+  // L('Pick me up', 'שיאספו אותי'): ask everyone who could drive. No car is held until someone says yes and picks one.
+  const [mode, setMode] = useState<'drive' | 'pickup'>(init.pickup ? 'pickup' : 'drive');
+  const [place, setPlace] = useState('');
+  const [pickCarIds, setPickCarIds] = useState<string[]>(() =>
+    state.cars.filter((c) => c.insuredMemberIds.some((id) => id !== me.id)).map((c) => c.id),
+  );
+  const isPickup = mode === 'pickup' && !existing;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -52,26 +65,31 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
     purpose: purpose.trim() || undefined,
     destination: destination.trim() || undefined,
   };
+  const pickupDraft = { memberId, carIds: pickCarIds, start, end, place };
 
   // Re-check the rules on every change so the user sees clashes before pressing Save.
   const check = useMemo(() => {
     try {
-      validateBooking(state, draft);
+      if (isPickup) validatePickupRequest(state, pickupDraft);
+      else validateBooking(state, draft);
       return { ok: true as const };
     } catch (e) {
       if (e instanceof RuleError) return { ok: false as const, message: e.message, suggestion: e.suggestion };
       throw e;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, carId, memberId, start, end, existing?.id]);
+  }, [state, carId, memberId, start, end, existing?.id, isPickup, place, pickCarIds]);
 
   const car = state.cars.find((c) => c.id === carId);
-  const owner = state.members.find((m) => m.id === car?.ownerId);
+  const owners = car ? ownerNames(state, car) : '';
+  const drivers = isPickup ? driversFor(state, pickupDraft) : [];
+  const toggleCar = (id: string) =>
+    setPickCarIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   // Editing an approved booking keeps its approval unless the car, driver or times change.
   const timesChanged =
     !existing || existing.carId !== carId || existing.memberId !== memberId || existing.start !== start || existing.end !== end;
   const asksOwner =
-    !!car && needsApproval(car, memberId) && (timesChanged || !isConfirmed(existing!));
+    !isPickup && !!car && needsApproval(car, memberId) && (timesChanged || !isConfirmed(existing!));
 
   const changeStart = (t: number) => {
     // Moving the start keeps the same duration, like most calendar apps.
@@ -83,13 +101,29 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
     setSaving(true);
     setSaveError(null);
     try {
-      await act((s) => saveBooking(s, draft));
-      if (asksOwner && owner) {
-        // Offer to tell the owner on WhatsApp / SMS right away.
+      if (isPickup) {
+        const id = newId();
+        await act((s) => createPickupRequest(s, pickupDraft, Date.now(), id));
+        const req = { ...pickupDraft, id, place: place.trim(), createdAt: Date.now() };
+        // Ask the people who could drive, e.g. in the family WhatsApp group.
         sheets.message({
-          to: owner.id,
-          title: 'Request sent!',
-          text: requestMessage(state, { ...draft, id: draft.id ?? '', createdAt: Date.now() }),
+          to: drivers.map((m) => m.id),
+          group: true,
+          title: L('Pick-up requested!', 'בקשת האיסוף נשלחה!'),
+          text: pickupRequestMessage(state, req),
+          textFor: (names) => pickupRequestMessage(state, req, names),
+        });
+        return;
+      }
+      await act((s) => saveBooking(s, draft));
+      const saved = { ...draft, id: draft.id ?? '', createdAt: Date.now() };
+      if (asksOwner && car && owners) {
+        // Offer to tell an owner on WhatsApp / SMS right away.
+        sheets.message({
+          to: ownersOf(car),
+          title: L('Request sent!', 'הבקשה נשלחה!'),
+          text: requestMessage(state, saved),
+          textFor: (names) => requestMessage(state, saved, names),
         });
       } else {
         onDone();
@@ -104,8 +138,8 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
   if (state.cars.length === 0) {
     return (
       <View style={{ padding: space(5), gap: space(4) }}>
-        <Banner tone="info">Add a car in the Family tab first.</Banner>
-        <Button title="Close" variant="secondary" onPress={onDone} />
+        <Banner tone="info">{L('Add a car in the Family tab first.', 'קודם צריך להוסיף רכב בלשונית משפחה.')}</Banner>
+        <Button title={L('Close', 'סגירה')} variant="secondary" onPress={onDone} />
       </View>
     );
   }
@@ -113,9 +147,20 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-        <Text style={s.title}>{existing ? 'Edit booking' : 'Book a car'}</Text>
+        <Text style={s.title}>{existing ? L('Edit booking', 'עריכת הזמנה') : isPickup ? L('Ask for a pick-up', 'בקשת איסוף') : L('Book a car', 'הזמנת רכב')}</Text>
 
-        <Label>Who's driving?</Label>
+        {!existing && (
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { key: 'drive', label: L('I\'m driving', 'אני נוהג/ת') },
+            { key: 'pickup', label: L('Pick me up', 'שיאספו אותי') },
+          ]}
+        />
+        )}
+
+        <Label>{isPickup ? L('Who needs a ride?', 'מי צריך הסעה?') : L('Who\'s driving?', 'מי נוהג?')}</Label>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.rowGap}>
           {state.members.map((m) => (
             <Pressable
@@ -126,29 +171,40 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
               style={[s.person, m.id === memberId && { borderColor: m.color, backgroundColor: tint(m.color, 0.88) }]}
             >
               <Avatar member={m} size={28} />
-              <Text style={s.personName}>{m.id === me.id ? `${m.name} (me)` : m.name}</Text>
+              <Text style={s.personName}>{m.id === me.id ? L(`${m.name} (me)`, `${m.name} (אני)`) : m.name}</Text>
             </Pressable>
           ))}
         </ScrollView>
 
-        <Label>Which car?</Label>
+        <Label>{isPickup ? L('Which cars are OK? Pick one or more.', 'אילו רכבים מתאימים? אפשר לבחור כמה.') : L('Which car?', 'איזה רכב?')}</Label>
         <View style={s.cars}>
           {state.cars.map((c) => {
             const insured = isInsured(c, memberId, start);
-            const selected = c.id === carId;
+            const canDrive = possibleDrivers(state, c, memberId).length;
+            const free = isCarFree(state, c.id, start, end);
+            const ok = isPickup ? canDrive > 0 && free : insured;
+            const selected = isPickup ? pickCarIds.includes(c.id) : c.id === carId;
             return (
               <Pressable
                 key={c.id}
-                onPress={() => setCarId(c.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
+                onPress={() => (isPickup ? toggleCar(c.id) : setCarId(c.id))}
+                accessibilityRole={isPickup ? 'checkbox' : 'button'}
+                accessibilityState={isPickup ? { checked: selected } : { selected }}
                 style={[s.carOption, selected && { borderColor: c.color, backgroundColor: tint(c.color, 0.9) }]}
               >
-                <Ionicons name="car-sport" size={24} color={c.color} />
+                <Ionicons name={isPickup && selected ? 'checkbox' : 'car-sport'} size={24} color={deepen(c.color)} />
                 <View>
                   <Text style={s.carName}>{c.name}</Text>
-                  <Text style={[s.carInsured, { color: insured ? colors.success : colors.danger }]}>
-                    {insured ? '✓ Insured' : '✕ Not insured'}
+                  <Text style={[s.carInsured, { color: ok ? colors.success : colors.danger }]}>
+                    {isPickup
+                      ? !free
+                        ? L('✕ Booked then', '✕ תפוס בזמן הזה')
+                        : canDrive > 0
+                          ? L(`✓ ${canDrive} can drive`, `✓ ${canDrive} יכולים לנהוג`)
+                          : L('✕ Nobody to drive', '✕ אין מי שינהג')
+                      : insured
+                        ? L('✓ Insured', '✓ יש ביטוח')
+                        : L('✕ Not insured', '✕ אין ביטוח')}
                   </Text>
                 </View>
               </Pressable>
@@ -158,11 +214,11 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
 
         <View style={s.times}>
           <View style={{ flex: 1 }}>
-            <DateTimeField label="From" value={start} onChange={changeStart} minDay={existing ? undefined : Date.now()} />
+            <DateTimeField label={L('From', 'מ־')} value={start} onChange={changeStart} minDay={existing ? undefined : Date.now()} />
           </View>
           <View style={{ flex: 1 }}>
             <DateTimeField
-              label={end > start ? `Until · ${formatDuration(end - start)}` : 'Until'}
+              label={end > start ? `${L('Until', 'עד')} · ${formatDuration(end - start)}` : L('Until', 'עד')}
               value={end}
               onChange={setEnd}
               minDay={start}
@@ -172,30 +228,58 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.rowGap}>
           {QUICK_DURATIONS.map((d) => (
-            <Chip key={d.label} label={d.label} selected={end - start === d.ms} onPress={() => setEnd(start + d.ms)} />
+            <Chip key={d.ms} label={formatDuration(d.ms)} selected={end - start === d.ms} onPress={() => setEnd(start + d.ms)} />
           ))}
-          <Chip label="Rest of day" selected={end === endOfDay(start)} onPress={() => setEnd(endOfDay(start))} />
+          <Chip label={L('Rest of day', 'עד סוף היום')} selected={end === endOfDay(start)} onPress={() => setEnd(endOfDay(start))} />
         </ScrollView>
 
-        <Field
-          label="Where to? (optional)"
-          placeholder="e.g. Grandma's, Haifa"
-          value={destination}
-          onChangeText={setDestination}
-          maxLength={120}
-          textContentType="fullStreetAddress"
-        />
+        {isPickup ? (
+          <Field
+            label={L('Pick me up from', 'מאיפה לאסוף אותי')}
+            placeholder={L('e.g. the train station', 'למשל: תחנת הרכבת')}
+            value={place}
+            onChangeText={setPlace}
+            maxLength={120}
+            textContentType="fullStreetAddress"
+          />
+        ) : (
+          <Field
+            label={L('Where to? (optional)', 'לאן? (לא חובה)')}
+            placeholder={L('e.g. Grandma\'s, Haifa', 'למשל: אצל סבתא, חיפה')}
+            value={destination}
+            onChangeText={setDestination}
+            maxLength={120}
+            textContentType="fullStreetAddress"
+          />
+        )}
 
-        <Field label="What for? (optional)" placeholder="Work, groceries, driving lesson…" value={purpose} onChangeText={setPurpose} maxLength={80} />
+        <Field label={L('What for? (optional)', 'בשביל מה? (לא חובה)')} placeholder={L('Work, groceries, driving lesson…', 'עבודה, קניות, שיעור נהיגה…')} value={purpose} onChangeText={setPurpose} maxLength={80} />
 
         {check.ok ? (
           <View style={{ gap: space(2) }}>
             {asksOwner && (
               <Banner tone="info" icon="key-outline">
-                {car?.name} belongs to {owner?.name}. It goes on the calendar once {owner?.name} approves.
+                {car && ownersOf(car).length > 1
+                  ? L(
+                      `${car.name} belongs to ${ownerNames(state, car, 'and')}. It goes on the calendar once one of them approves.`,
+                      `${car.name} שייך ל${ownerNames(state, car, 'and')}. זה ייכנס ליומן אחרי שאחד מהם יאשר.`,
+                    )
+                  : L(
+                      `${car?.name} belongs to ${owners}. It goes on the calendar once ${owners} approves.`,
+                      `${car?.name} שייך ל${owners}. זה ייכנס ליומן אחרי האישור של ${owners}.`,
+                    )}
               </Banner>
             )}
-            <Banner tone="success">{car?.name} is free then.</Banner>
+            {isPickup ? (
+              <Banner tone="info" icon="hand-left-outline">
+                {L(
+                  `We'll ask ${joinNames(drivers.map((m) => m.name))}. Whoever says yes picks the car, and only then is it reserved.`,
+                  `הבקשה תישלח ל${joinNames(drivers.map((m) => m.name))}. מי שיענה כן יבחר רכב, ורק אז הוא יוזמן.`,
+                )}
+              </Banner>
+            ) : (
+              <Banner tone="success">{car?.name} is free then.</Banner>
+            )}
           </View>
         ) : (
           <View style={{ gap: space(2) }}>
@@ -205,7 +289,7 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
                 small
                 variant="secondary"
                 icon="flash-outline"
-                title={`Next free: ${formatRange(check.suggestion.start, check.suggestion.end)}`}
+                title={L(`Next free: ${formatRange(check.suggestion.start, check.suggestion.end)}`, `הזמן הפנוי הבא: ${formatRange(check.suggestion.start, check.suggestion.end)}`)}
                 onPress={() => {
                   setStart(check.suggestion!.start);
                   setEnd(check.suggestion!.end);
@@ -218,10 +302,10 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
       </ScrollView>
 
       <View style={s.footer}>
-        <Button title="Cancel" variant="ghost" onPress={onDone} style={{ flex: 1 }} />
+        <Button title={L('Cancel', 'ביטול')} variant="ghost" onPress={onDone} style={{ flex: 1 }} />
         <Button
-          title={asksOwner ? `Ask ${owner?.name}` : existing ? 'Save changes' : 'Book it'}
-          icon={asksOwner ? 'paper-plane-outline' : 'checkmark'}
+          title={asksOwner ? L(`Ask ${owners}`, `לבקש מ${owners}`) : existing ? L('Save changes', 'שמירת השינויים') : isPickup ? L('Request a pick-up', 'בקשת איסוף') : L('Book it', 'להזמין')}
+          icon={asksOwner || isPickup ? 'paper-plane-outline' : 'checkmark'}
           disabled={!check.ok}
           loading={saving}
           onPress={save}

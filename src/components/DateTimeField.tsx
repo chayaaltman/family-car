@@ -5,6 +5,7 @@ import { MINUTE, formatDayLabel, formatTime, withDate, withTime } from '../logic
 import { colors, radius, space } from '../theme';
 import { MonthGrid } from './MonthGrid';
 import { Button, Label } from './ui';
+import { L } from '../i18n';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -26,7 +27,7 @@ export function DateTimeField({
       <Label>{label}</Label>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${formatDayLabel(value)} at ${formatTime(value)}. Tap to change.`}
+        accessibilityLabel={L(`${label}: ${formatDayLabel(value)} at ${formatTime(value)}. Tap to change.`, `${label}: ${formatDayLabel(value)} ב־${formatTime(value)}. לחיצה לשינוי.`)}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [s.field, pressed && { opacity: 0.7 }]}
       >
@@ -75,7 +76,7 @@ function DateTimeSheet({
 
   return (
     <Modal transparent animationType="slide" onRequestClose={onCancel}>
-      <Pressable style={s.backdrop} onPress={onCancel} accessibilityLabel="Close" />
+      <Pressable style={s.backdrop} onPress={onCancel} accessibilityLabel={L('Close', 'סגירה')} />
       <View style={s.sheet}>
         <View style={s.sheetHeader}>
           <Text style={s.sheetTitle}>{title}</Text>
@@ -92,33 +93,33 @@ function DateTimeSheet({
             onSelect={(day) => setDraft(withDate(draft, day))}
           />
 
-          <Text style={s.groupLabel}>Hour</Text>
+          <Text style={s.groupLabel}>{L('Hour', 'שעה')}</Text>
           <View style={s.grid}>
             {Array.from({ length: 24 }, (_, h) => (
               <Cell key={h} label={pad(h)} selected={h === hour} onPress={() => setDraft(withTime(draft, h, minute))} />
             ))}
           </View>
 
-          <Text style={s.groupLabel}>Minute</Text>
+          <Text style={s.groupLabel}>{L('Minute', 'דקה')}</Text>
           <View style={s.grid}>
             {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
               <Cell key={m} label={`:${pad(m)}`} selected={m === minute} onPress={() => setDraft(withTime(draft, hour, m))} />
             ))}
           </View>
           <View style={s.fineRow}>
-            <Pressable accessibilityLabel="One minute earlier" style={s.fineBtn} onPress={() => setDraft(draft - MINUTE)}>
+            <Pressable accessibilityLabel={L('One minute earlier', 'דקה אחת מוקדם יותר')} style={s.fineBtn} onPress={() => setDraft(draft - MINUTE)}>
               <Ionicons name="remove" size={20} color={colors.primary} />
             </Pressable>
             <Text style={[s.fineText, s.mono]}>{formatTime(draft)}</Text>
-            <Pressable accessibilityLabel="One minute later" style={s.fineBtn} onPress={() => setDraft(draft + MINUTE)}>
+            <Pressable accessibilityLabel={L('One minute later', 'דקה אחת מאוחר יותר')} style={s.fineBtn} onPress={() => setDraft(draft + MINUTE)}>
               <Ionicons name="add" size={20} color={colors.primary} />
             </Pressable>
           </View>
-          <Text style={s.hint}>Use − / + for exact minutes</Text>
+          <Text style={s.hint}>{L('Use − / + for exact minutes', 'אפשר להשתמש ב־ − / + לדקות מדויקות')}</Text>
         </ScrollView>
         <View style={s.actions}>
-          <Button title="Cancel" variant="ghost" onPress={onCancel} style={{ flex: 1 }} />
-          <Button title="Done" onPress={() => onDone(draft)} style={{ flex: 2 }} />
+          <Button title={L('Cancel', 'ביטול')} variant="ghost" onPress={onCancel} style={{ flex: 1 }} />
+          <Button title={L('Done', 'סיום')} onPress={() => onDone(draft)} style={{ flex: 2 }} />
         </View>
       </View>
     </Modal>

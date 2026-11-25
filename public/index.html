@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <title>Family Car</title>
+    <!-- Home-screen app: icon and full-screen mode when added from the browser -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Family Car" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Light/dark page color before the app loads (the app's theme takes over from src/theme.ts) -->
+    <meta name="theme-color" content="#F1F7F7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111A2C" media="(prefers-color-scheme: dark)" />
+    <script>
+      try {
+        var t = JSON.parse(localStorage.getItem('familycar:prefs:v1') || '{}').theme;
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
+    <style id="theme-boot">
+      html, body { background-color: #F1F7F7; }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme='light']), html:not([data-theme='light']) body { background-color: #111A2C; color-scheme: dark; }
+      }
+      html[data-theme='dark'], html[data-theme='dark'] body { background-color: #111A2C; color-scheme: dark; }
+    </style>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript> You need to enable JavaScript to run this app. </noscript>
+    <div id="root"></div>
+  </body>
+</html>
