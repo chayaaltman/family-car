@@ -216,7 +216,8 @@ function PinCard({ hasPin, onSave }: { hasPin: boolean; onSave: (pin: string) =>
 
 const s = StyleSheet.create({
   header: { padding: space(5), paddingBottom: space(3), gap: space(3) },
-  title: { fontSize: 26, fontWeight: '800', color: colors.text },
+  // Centered; the side padding keeps a long family name clear of the settings button in the corner.
+  title: { fontSize: 26, fontWeight: '800', color: colors.text, textAlign: 'center', paddingHorizontal: space(10) },
   content: { paddingHorizontal: space(5), paddingBottom: space(12), gap: space(2.5) },
   label: { fontSize: 12, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   code: { fontSize: 32, fontWeight: '800', letterSpacing: 4, color: colors.primary, fontVariant: ['tabular-nums'] },
