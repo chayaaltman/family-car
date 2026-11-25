@@ -52,6 +52,7 @@ export interface Pickup {
   place: string; // where to pick them up, e.g. "the train station"
   driverId?: Id;
   carIds?: Id[]; // the cars the person asked for, so the request can be reopened if the driver drops out
+  requestId?: Id; // the pick-up request it came from, so an old link to the request can find it
 }
 
 /**

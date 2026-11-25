@@ -3,9 +3,16 @@ import { driverOf, ownerNames } from './bookings';
 import { joinNames } from './labels';
 import { formatRange } from './time';
 import { L } from '../i18n';
+import { appLink, type LinkTarget } from '../links';
 
 // Ready-made texts for WhatsApp / SMS, in English or Hebrew. The user can still edit them before sending.
 // The Hebrew is worded so it works whoever is writing (no gendered verbs where avoidable).
+
+/** Adds the link that opens the right page (no link in demo mode). */
+function withLink(text: string, target: LinkTarget): string {
+  const link = appLink(target);
+  return link ? `${text}\n${link}` : text;
+}
 
 function parts(state: FamilyState, b: Booking) {
   const car = state.cars.find((c) => c.id === b.carId)?.name ?? L('the car', 'הרכב');
@@ -21,10 +28,10 @@ function parts(state: FamilyState, b: Booking) {
 export function requestMessage(state: FamilyState, b: Booking, toNames: string[] = []): string {
   const { car, who, owner, when, where } = parts(state, b);
   const hi = toNames.length ? joinNames(toNames) : owner;
-  return L(
+  return withLink(L(
     `Hi ${hi}! I asked for the ${car} ${when}${where}. Can you approve it in Family Car? 🙏 – ${who}`,
     `היי ${hi}! ביקשתי את ${car} ${when}${where}. אפשר לאשר ב-Family Car? 🙏 – ${who}`,
-  );
+  ), { kind: 'booking', id: b.id });
 }
 
 /** Owner → requester, after deciding. */
@@ -34,15 +41,15 @@ export function decisionMessage(state: FamilyState, b: Booking, approved: boolea
   const owner = state.members.find((m) => m.id === fromId)?.name ?? owners;
   const why = reason?.trim() ? ` ${reason.trim()}.` : '';
   if (approved) {
-    return L(
+    return withLink(L(
       `Hi ${who}, I approved your ${car} booking ${when} 👍 Drive safe! – ${owner}`,
       `היי ${who}, אישרתי לך את ${car} ${when} 👍 נסיעה טובה! – ${owner}`,
-    );
+    ), { kind: 'booking', id: b.id });
   }
-  return L(
+  return withLink(L(
     `Hi ${who}, sorry – I can't give you the ${car} ${when}.${why} – ${owner}`,
     `היי ${who}, סליחה – לא אוכל לתת לך את ${car} ${when}.${why} – ${owner}`,
-  );
+  ), { kind: 'booking', id: b.id });
 }
 
 /** Person who needs a ride → the people who could drive (or a group chat: no names = "everyone"). */
@@ -57,10 +64,10 @@ export function pickupRequestMessage(state: FamilyState, r: PickupRequest, toNam
         : '';
   const hi = toNames.length ? joinNames(toNames) : L('everyone', 'כולם');
   const when = formatRange(r.start, r.end);
-  return L(
+  return withLink(L(
     `Hi ${hi}! Can someone pick me up from ${r.place} ${when}?${carText} Tap "I'll pick you up" in Family Car 🙏 – ${who}`,
     `היי ${hi}! מישהו יכול לאסוף אותי מ${r.place} ${when}?${carText} אפשר ללחוץ על "אני אאסוף" ב-Family Car 🙏 – ${who}`,
-  );
+  ), { kind: 'pickup', id: r.id });
 }
 
 /** Driver → the person being picked up, right after saying yes. */
@@ -70,17 +77,17 @@ export function pickupTakenMessage(state: FamilyState, b: Booking, driverId: Id)
   const driver = state.members.find((m) => m.id === driverId)?.name ?? '';
   const place = b.pickup?.place ?? '';
   const when = formatRange(b.start, b.end);
-  return L(
+  return withLink(L(
     `Hi ${rider}, I'll pick you up from ${place || 'there'} ${when} with the ${car} 🚗 – ${driver}`,
     `היי ${rider}, אני אאסוף אותך${place ? ` מ${place}` : ''} ${when} עם ${car} 🚗 – ${driver}`,
-  );
+  ), { kind: 'booking', id: b.id });
 }
 
 /** Anyone → the person who has the car booked. */
 export function askAboutBookingMessage(state: FamilyState, b: Booking, fromName: string): string {
   const { car, who, when } = parts(state, b);
-  return L(
+  return withLink(L(
     `Hi ${who}! I saw you have the ${car} ${when}. Any chance we can work something out? 🚗 – ${fromName}`,
     `היי ${who}! ראיתי ש${car} אצלך ${when}. יש סיכוי שנסתדר? 🚗 – ${fromName}`,
-  );
+  ), { kind: 'booking', id: b.id });
 }

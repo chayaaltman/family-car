@@ -16,6 +16,10 @@ import { FamilyScreen } from './src/screens/FamilyScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { WelcomeScreen, WhoAreYouScreen } from './src/screens/Onboarding';
 import { SettingsButton } from './src/screens/SettingsScreen';
+import { incomingLink, takeLinkTarget } from './src/links';
+
+// Read the link the page was opened with before anything else touches the address bar.
+incomingLink();
 import { colors, shadow, space } from './src/theme';
 import { L } from './src/i18n';
 
@@ -79,6 +83,14 @@ function MainTabs() {
   const sheets = useSheets();
   const { state, me } = useLoadedFamily();
   const waiting = requestsFor(state, me.id).length + openPickupsFor(state, me.id).length;
+
+  // Opened from a link in a message: show that booking or pick-up right away.
+  useEffect(() => {
+    const target = takeLinkTarget();
+    if (target?.kind === 'booking') sheets.showBooking(target.id);
+    if (target?.kind === 'pickup') sheets.showPickup(target.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <View style={{ flex: 1 }}>

@@ -245,7 +245,7 @@ export const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().
  * driving, it becomes a request the owner must approve. Editing an approved
  * booking's car or times sends it back for approval; editing just the notes doesn't.
  */
-export function saveBooking(state: FamilyState, draft: Draft, now = Date.now()): FamilyState {
+export function saveBooking(state: FamilyState, draft: Draft, now = Date.now(), newBookingId: Id = newId()): FamilyState {
   validateBooking(state, draft, now);
   const car = state.cars.find((c) => c.id === draft.carId)!;
   const askOwner = needsApproval(car, draft.memberId);
@@ -276,7 +276,7 @@ export function saveBooking(state: FamilyState, draft: Draft, now = Date.now()):
     };
   }
   const booking: Booking = {
-    id: newId(),
+    id: newBookingId,
     status: askOwner ? 'pending' : 'approved',
     carId: draft.carId,
     memberId: draft.memberId,

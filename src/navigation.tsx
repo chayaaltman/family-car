@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Modal, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PickupSheet } from './components/PickupCard';
 import { BookingDetails } from './screens/BookingDetails';
 import { BookingForm, type BookingFormInit } from './screens/BookingForm';
 import { CarDetails } from './screens/CarDetails';
@@ -17,6 +18,7 @@ import { colors } from './theme';
 type Sheet =
   | { kind: 'new-booking'; init: BookingFormInit }
   | { kind: 'booking'; bookingId: string }
+  | { kind: 'pickup'; requestId: string }
   | { kind: 'car-details'; carId: string }
   | { kind: 'car'; carId?: string }
   | { kind: 'member'; memberId?: string }
@@ -25,6 +27,8 @@ type Sheet =
 interface SheetApi {
   newBooking: (init?: BookingFormInit) => void;
   showBooking: (bookingId: string) => void;
+  /** A pick-up request (opened from a link in a message). */
+  showPickup: (requestId: string) => void;
   showCar: (carId: string) => void;
   editCar: (carId?: string) => void;
   editMember: (memberId?: string) => void;
@@ -44,6 +48,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
     return {
       newBooking: (init = {}) => push({ kind: 'new-booking', init }),
       showBooking: (bookingId) => push({ kind: 'booking', bookingId }),
+      showPickup: (requestId) => push({ kind: 'pickup', requestId }),
       showCar: (carId) => push({ kind: 'car-details', carId }),
       editCar: (carId) => push({ kind: 'car', carId }),
       editMember: (memberId) => push({ kind: 'member', memberId }),
@@ -74,6 +79,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
                 onEdit={() => api.newBooking({ bookingId: top.bookingId })}
               />
             )}
+            {top?.kind === 'pickup' && <PickupSheet requestId={top.requestId} onClose={close} />}
             {top?.kind === 'car-details' && <CarDetails carId={top.carId} onClose={close} />}
             {top?.kind === 'car' && <CarEditor carId={top.carId} onDone={close} />}
             {top?.kind === 'member' && <MemberEditor memberId={top.memberId} onDone={close} />}

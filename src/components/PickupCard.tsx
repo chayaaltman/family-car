@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLoadedFamily } from '../data/FamilyContext';
 import { needsApproval, ownerNames, ownersOf } from '../logic/bookings';
 import { pickupRequestMessage, pickupTakenMessage, requestMessage } from '../logic/messages';
@@ -175,6 +175,8 @@ export function MyPickupCard({ requestId }: { requestId: string }) {
 
 const s = StyleSheet.create({
   card: { gap: space(3) },
+  sheet: { padding: space(5), gap: space(4) },
+  sheetTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
   line: { fontSize: 14, color: colors.muted },
@@ -196,3 +198,44 @@ const s = StyleSheet.create({
   actions: { flexDirection: 'row', gap: space(2) },
   waitIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.warningSoft, alignItems: 'center', justifyContent: 'center' },
 });
+
+/**
+ * Opened from a link in a pick-up message: shows the request to someone who could drive,
+ * the asker's own controls, or what happened to it (taken by someone / cancelled).
+ */
+export function PickupSheet({ requestId, onClose }: { requestId: string; onClose: () => void }) {
+  const { state, me } = useLoadedFamily();
+  const sheets = useSheets();
+  const req = state.pickups?.find((r) => r.id === requestId);
+  const taken = state.bookings.find((b) => b.pickup?.requestId === requestId);
+  const driver = state.members.find((m) => m.id === taken?.pickup?.driverId);
+  const canDrive = !!req && carsForDriver(state, req, me.id).length > 0;
+
+  return (
+    <ScrollView contentContainerStyle={s.sheet}>
+      <Text style={s.sheetTitle}>{L('Pick-up request', 'בקשת איסוף')}</Text>
+      {req && req.memberId === me.id && <MyPickupCard requestId={req.id} />}
+      {req && req.memberId !== me.id && canDrive && <PickupCard requestId={req.id} />}
+      {req && req.memberId !== me.id && !canDrive && (
+        <Banner tone="info">
+          {L(
+            "You can't take this one: you're not insured on any of the cars it asks for, or they're booked then.",
+            'אי אפשר לקחת את זה: אין לי ביטוח על אף אחד מהרכבים שביקשו, או שהם תפוסים בזמן הזה.',
+          )}
+        </Banner>
+      )}
+      {!req && taken && (
+        <>
+          <Banner tone="success" icon="car-outline">
+            {driver?.id === me.id
+              ? L("You're already doing this pick-up.", 'כבר לקחתי את האיסוף הזה.')
+              : L(`${driver?.name ?? 'Someone'} is already doing this pick-up.`, `${driver?.name ?? 'מישהו'} כבר לקח/ה את האיסוף הזה.`)}
+          </Banner>
+          <Button title={L('Open the booking', 'לפתיחת ההזמנה')} variant="secondary" onPress={() => sheets.showBooking(taken.id)} />
+        </>
+      )}
+      {!req && !taken && <Banner tone="info">{L('This pick-up request was cancelled or has passed.', 'בקשת האיסוף הזאת בוטלה או שהזמן שלה עבר.')}</Banner>}
+      <Button title={L('Close', 'סגירה')} variant="ghost" onPress={onClose} />
+    </ScrollView>
+  );
+}

@@ -10,6 +10,7 @@ import { useSheets } from '../navigation';
 import { colors, onColor, space } from '../theme';
 import { confirm } from './BookingDetails';
 import { L } from '../i18n';
+import { appLink } from '../links';
 
 type Section = 'members' | 'cars' | 'phone';
 
@@ -25,8 +26,8 @@ export function FamilyScreen() {
   const inviteFamily = () =>
     Share.share({
       message: L(
-        `Join our family car schedule 🚗\nOpen the Family Car app → “Join with a code” → enter code: ${settings.familyCode}`,
-        `הצטרפו ליומן הרכבים של המשפחה 🚗\nפותחים את Family Car ← ״הצטרפות עם קוד״ ← מזינים את הקוד: ${settings.familyCode}`,
+        `Join our family car schedule 🚗\nOpen this link and tap “Join with a code” (the code is filled in): ${appLink({ kind: 'family' })}\nCode: ${settings.familyCode}`,
+        `הצטרפו ליומן הרכבים של המשפחה 🚗\nפותחים את הקישור ולוחצים ״הצטרפות עם קוד״ (הקוד כבר ממולא): ${appLink({ kind: 'family' })}\nהקוד: ${settings.familyCode}`,
       ),
     }).catch(() => undefined);
 

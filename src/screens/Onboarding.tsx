@@ -6,13 +6,15 @@ import { adminIdOf, pinOf } from '../logic/admin';
 import type { Member } from '../types';
 import { colors, space } from '../theme';
 import { L } from '../i18n';
+import { incomingLink } from '../links';
 
 /** First launch with cloud sync configured: start a new family or join one. */
 export function WelcomeScreen() {
   const { createFamily, joinFamily, startDemo } = useFamily();
-  const [mode, setMode] = useState<'pick' | 'create' | 'join'>('pick');
+  const linkedCode = incomingLink()?.familyCode;
+  const [mode, setMode] = useState<'pick' | 'create' | 'join'>(linkedCode ? 'join' : 'pick');
   const [name, setName] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(linkedCode ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

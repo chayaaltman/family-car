@@ -6,6 +6,7 @@ import type { FamilyState, Member } from '../types';
 import { FirebaseStore, generateFamilyCode, isCloudConfigured } from './firebaseStore';
 import { LocalStore } from './localStore';
 import { emptyFamily, localizeDemo, withPastelColors } from './seed';
+import { setLinkFamilyCode } from '../links';
 import type { FamilyStore, Mutation } from './store';
 import { L } from '../i18n';
 
@@ -63,6 +64,9 @@ export function FamilyProvider({ children }: { children: React.ReactNode }) {
     setSettings(next);
     await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
   }, []);
+
+  // Links in messages carry the family code (demo mode: no links).
+  setLinkFamilyCode(settings.mode === 'cloud' ? settings.familyCode : undefined);
 
   const store: FamilyStore | null = useMemo(() => {
     if (settings.mode === 'demo') return new LocalStore();

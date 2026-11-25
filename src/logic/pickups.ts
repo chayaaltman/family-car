@@ -135,7 +135,7 @@ export function takePickup(
     memberId: req.memberId,
     start: req.start,
     end: req.end,
-    pickup: { place: req.place, driverId, carIds: req.carIds },
+    pickup: { place: req.place, driverId, carIds: req.carIds, requestId: req.id },
     createdAt: now,
   };
   validateBooking(state, booking, now); // the driver is insured, the car is free, nobody is double-booked

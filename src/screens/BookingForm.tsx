@@ -115,8 +115,9 @@ export function BookingForm({ init, onDone }: { init: BookingFormInit; onDone: (
         });
         return;
       }
-      await act((s) => saveBooking(s, draft));
-      const saved = { ...draft, id: draft.id ?? '', createdAt: Date.now() };
+      const bookingId = draft.id ?? newId();
+      await act((s) => saveBooking(s, draft, Date.now(), bookingId));
+      const saved = { ...draft, id: bookingId, createdAt: Date.now() };
       if (asksOwner && car && owners) {
         // Offer to tell an owner on WhatsApp / SMS right away.
         sheets.message({
